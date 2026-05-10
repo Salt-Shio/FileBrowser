@@ -1,0 +1,51 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Environment ---
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+env/
+.conda/
+
+# --- Database (SQLite) ---
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# --- Docker ---
+.docker/
+docker-compose.override.yml
+
+# --- IDE (VSCode, PyCharm, etc.) ---
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- Node.js ---
+**/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+dist/
+build/
+.next/
+
+# --- OS ---
+Thumbs.db
+db.sqlite3

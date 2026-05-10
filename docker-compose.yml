@@ -1,0 +1,13 @@
+services:
+  server:
+    build: ./server
+    container_name: file-explorer-server
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - server/.env
+    volumes:
+      - ./server/app:/app/app
+      - ./db:/app/db
+      - ./data:/app/data
