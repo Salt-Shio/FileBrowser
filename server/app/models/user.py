@@ -6,8 +6,9 @@
 3. 作為 SQLAlchemy ORM 操作的物件實體
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 class User(Base):
@@ -32,4 +33,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     
     # 7. 建立時間
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # VFS 關聯
+    folders = relationship("Folder", back_populates="owner", foreign_keys="[Folder.owner_id]")
+    files = relationship("File", back_populates="owner", foreign_keys="[File.owner_id]")
