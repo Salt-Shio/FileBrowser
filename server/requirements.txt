@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+aiosqlite
+python-dotenv
+python-jose[cryptography]
+passlib[argon2]
+pyotp
+python-multipart
+Pillow
+pydantic-settings
