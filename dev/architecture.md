@@ -49,13 +49,13 @@ graph TD
         Auth_Core --> Session_Mgr
     end
 
-    subgraph Layer_3_File [4. 檔案協調引擎]
-        VFS[虛擬目錄: 路徑與結構管理]
-        Chunk_Mgr[分片處理: 緩存與合併]
-        Tx_Coord[事務協調: DB/Disk 同步]
+    subgraph Layer_3_File [4. 檔案引擎核心]
+        VFS_Engine[VFS 核心引擎: 結構管理與實體同步]
+        Chunk_Mgr[Chunk_Mgr: 分片處理與合併]
         
-        Chunk_Mgr --> Tx_Coord
-        Tx_Coord --> VFS
+        %% 內部邏輯流
+        VFS_Engine -. 權限驗證 .-> Chunk_Mgr
+        Chunk_Mgr -- 合併完成 --> VFS_Engine
     end
 
     %% 第四層：數據持久化
@@ -64,26 +64,24 @@ graph TD
         Disk[實體磁碟: 二進制檔案]
     end
 
-    %% 跨層對接邏輯 (合併與獨立處理)
+    %% 跨層對接邏輯
     EP_Login --> Auth_Core
     EP_2FA --> Auth_Core
     
-    %% 查詢類：對接 VFS
-    EP_Browse --> VFS
-    
-    %% 傳輸類：對接 Uploader 或 Disk
-    EP_Upload --> Chunk_Mgr
-    EP_Download --> VFS
-    
-    %% 變更類：對接 Tx_Coord (實體同步)
-    EP_Modify --> Tx_Coord
-    EP_Mkdir --> Tx_Coord
-    EP_Delete --> Tx_Coord
+    %% 檔案操作：統一對接 VFS 引擎
+    EP_Browse --> VFS_Engine
+    EP_Download --> VFS_Engine
+    EP_Upload --> VFS_Engine
+    EP_Modify --> VFS_Engine
+    EP_Mkdir --> VFS_Engine
+    EP_Delete --> VFS_Engine
 
     %% 底層持久化
     Auth_Core --> DB
     Session_Mgr --> DB
-    Tx_Coord --> Disk
+    VFS_Engine --> DB
+    Chunk_Mgr -- 暫存碎片與合併 --> Disk
+    VFS_Engine -- 實體同步 --> Disk
     end
 ```
 
@@ -109,25 +107,41 @@ graph TD
     *   **Step 1.6: 門禁櫃台 API (Auth Endpoints)**
         *   串連上述邏輯，完成 `/login`、`/verify-2fa` 與 `/me` 測試端點。
 
-### Phase 2: VFS 結構與瀏覽邏輯 (檔案結構)
-*   **對應模組**：EP_Browse -> VFS -> DB (File Metadata)
-*   **實作重點**：
-    *   定義檔案元數據 (Metadata) 模型。
-    *   實作虛擬目錄解析邏輯 (將 DB 記錄映射至邏輯目錄樹)。
-    *   完成「讀取列表」與「搜尋檔案」功能。
+### Phase 2: VFS 結構與瀏覽邏輯 (Metadata & Navigation)
+*   **對應模組**：EP_Browse -> VFS_Engine -> DB
+*   **詳細實作步驟**：
+    *   **Step 2.1: 元數據建模 (Metadata Schema)**
+        *   建立 `Folder` 與 `File` 的 SQLAlchemy 模型，包含 UUID, `hash_sha256` 與複合索引優化。
+    *   **Step 2.2: 導航核心 (Navigation Core)**
+        *   實作「UUID 查詢」邏輯與「麵包屑 (Breadcrumbs) 產生器」，為前端導航提供結構。
+    *   **Step 2.3: 瀏覽端點 (Browse API)**
+        *   實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁、排序與 Pydantic Schema。
+    *   **Step 2.4: 系統初始化與安全 (Initial Root & Security)**
+        *   實作啟動時自動建立使用者根目錄，並確保所有 UUID 存取皆通過 `owner_id` 檢查。
 
-### Phase 3: 事務協調與實體同步 (變更管理)
-*   **對應模組**：EP_Modify/Mkdir/Delete -> Tx_Coord -> VFS/Disk
-*   **實作重點**：
-    *   實作 **Tx_Coord (事務協調器)**，處理磁碟 `os.rename/mkdir` 與資料庫記錄的同步原子性。
-    *   完成「建立資料夾」、「移動位置」與「重命名」功能。
-    *   完成「檔案刪除」功能（包含實體與記錄的同步清理）。
+### Phase 3: VFS 變更管理 (Mutation & Sync)
+*   **對應模組**：EP_Modify/Mkdir/Delete -> VFS_Engine -> DB/Disk
+*   **詳細實作步驟**：
+    *   **Step 3.1: 事務同步封裝 (Sync Wrapper)**
+        *   實作 VFS 核心內部用於確保 DB 紀錄與磁碟實體「雙寫一致性」的同步邏輯。
+    *   **Step 3.2: 目錄管理 (Mkdir/Rename)**
+        *   實現資料夾建立與檔案/資料夾的重命名邏輯。
+    *   **Step 3.3: 虛擬搬移 (Move)**
+        *   實作秒級搬移邏輯 (僅修改 `parent_id`)，並處理目標路徑衝突檢查。
+    *   **Step 3.4: 安全刪除 (Delete)**
+        *   實作刪除標記與實體檔案的同步清理機制。
 
-### Phase 4: 數據傳輸管道 (檔案 IO)
-*   **對應模組**：EP_Upload/Download -> Chunk_Mgr -> Tx_Coord -> Disk
-*   **實作重點**：
-    *   實作 **Chunk_Mgr (分片處理器)** 處理大檔案上傳、暫存與合併。
-    *   實作檔案串流讀取 (Download) 與寫入 (Upload) 的 IO 優化。
+### Phase 4: 傳輸管道 (Chunked IO)
+*   **對應模組**：EP_Upload/Download -> Chunk_Mgr -> VFS_Engine -> Disk
+*   **詳細實作步驟**：
+    *   **Step 4.1: 分片管理 (Chunk_Mgr)**
+        *   實作後端分片接收邏輯，並暫存於磁碟臨時區 (`/temp/chunks`)。
+    *   **Step 4.2: 合併與註冊 (Merge & Register)**
+        *   完成分片拼接、雜湊 (SHA256) 校驗，並向 VFS 引擎登記正式 Metadata。
+    *   **Step 4.3: 串流下載 (Streaming)**
+        *   實作基於 FastAPI `FileResponse` 的串流下載管道，優化大檔案讀取性能。
+    *   **Step 4.4: 碎片垃圾回收 (GC)**
+        *   實作背景清理機制，自動回收超過 24 小時未完成的孤兒分片。
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 *   **對應模組**：Media_Aux
