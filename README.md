@@ -120,7 +120,7 @@ graph TD
 - **Backend**: FastAPI (Python)
 - **Frontend**: Vue 3 + Vite + Tailwind CSS
 - **Database**: SQLAlchemy 2.0 (Async) + SQLite
-- **Security**: Argon2 (Password), PyOTP (2FA), Jose (JWT)
+- **Security**: OAuth2 (Bearer Token), Argon2 (Password), PyOTP (2FA), Jose (JWT)
 - **Container**: Docker + Docker Compose
 
 ## 快速啟動 (開發環境)
