@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.database import get_db
+from app.api import deps
 from app.models import User
 from app.security import hasher, otp, jwt
 from app import schemas
@@ -19,7 +19,7 @@ router = APIRouter()
 # --- API 實作 ---
 
 @router.post("/login")
-async def login(data: schemas.auth.LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(data: schemas.auth.LoginRequest, db: AsyncSession = Depends(deps.get_db)):
     """
     第一階段：密碼驗證
     """
@@ -41,7 +41,7 @@ async def login(data: schemas.auth.LoginRequest, db: AsyncSession = Depends(get_
     }
 
 @router.post("/verify-2fa")
-async def verify_2fa(data: schemas.auth.Verify2FARequest, db: AsyncSession = Depends(get_db)):
+async def verify_2fa(data: schemas.auth.Verify2FARequest, db: AsyncSession = Depends(deps.get_db)):
     """
     第二階段：2FA 驗證與簽發 JWT
     """
