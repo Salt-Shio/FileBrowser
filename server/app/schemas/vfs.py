@@ -58,3 +58,19 @@ class FileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class BrowseResponse(BaseModel):
+    """
+    瀏覽目錄回傳模型
+    """
+    current_folder: FolderResponse
+    breadcrumbs: List[Breadcrumb]
+    subfolders: List[FolderResponse]
+    files: List[FileResponse]
+
+class SearchResponse(BaseModel):
+    """
+    搜尋結果回傳模型
+    """
+    folders: List[FolderResponse]
+    files: List[FileResponse]
