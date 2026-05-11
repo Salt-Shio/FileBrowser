@@ -17,7 +17,7 @@ class Folder(Base):
     職責：管理資料夾的層級結構與虛擬路徑。
     """
     __tablename__ = "folders"
-
+    
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     
