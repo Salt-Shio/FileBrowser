@@ -36,12 +36,7 @@ AsyncSessionLocal = sessionmaker(
 # 4. 定義模型基底類別
 Base = declarative_base()
 
-# 5. 依賴注入用：獲取資料庫會話
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
-
-# 6. 資料庫初始化函式
+# 5. 資料庫初始化函式
 async def init_db():
     """
     建立資料表並進行啟動前的最後準備
