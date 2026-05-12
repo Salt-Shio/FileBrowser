@@ -6,7 +6,7 @@ API 依賴項模組 (API Dependencies)
 3. 整合 JWT 驗證與資料庫查詢
 """
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -14,8 +14,8 @@ from app.database import AsyncSessionLocal
 from app.models import User
 from app.security import jwt
 
-# 設定 OAuth2 方案，這會讓 Swagger UI 出現 Authorize 按鈕
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# 改用 HTTPBearer，這會讓 Swagger UI 出現一個純粹貼 Token 的輸入框
+security = HTTPBearer()
 
 async def get_db():
     """
@@ -26,11 +26,12 @@ async def get_db():
 
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
-    token: str = Depends(oauth2_scheme)
+    auth: HTTPAuthorizationCredentials = Depends(security)
 ) -> User:
     """
     驗證 Token 並回傳目前登入的使用者物件。
     """
+    token = auth.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="身分驗證失敗，請重新登入",
