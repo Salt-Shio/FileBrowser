@@ -101,17 +101,21 @@ graph TD
 - [x] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
 - [x] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
 
-### Phase 3: VFS 變更管理 (Mutation & Sync)
-- [ ] **Step 3.1: 事務同步封裝 (Sync Wrapper)**: 實作確保 DB 紀錄與磁碟實體「雙寫一致性」的核心同步邏輯。
-- [ ] **Step 3.2: 目錄管理 (Mkdir/Rename)**: 實現資料夾建立與檔案/資料夾的重命名邏輯。
-- [ ] **Step 3.3: 虛擬搬移 (Move)**: 實作秒級搬移邏輯 (僅修改 `parent_id`)。
-- [ ] **Step 3.4: 安全刪除 (Delete)**: 實作刪除標記與實體檔案的同步清理機制。
+### Phase 3: VFS 邏輯變更管理 (Mutation & Structure)
+> [!IMPORTANT]
+> **設計準則：實體優先 (Physical-First)**
+> 為了避免產生「幽靈資料夾/檔案」（即 DB 有紀錄但實體不存在），設計上必須確保：**只有在 Phase 4 的實體儲存處理成功後，才執行 Phase 3 的 VFS 元數據更新。** Phase 3 的 Service 必須保留良好的擴展接口以實現此順序。
 
-### Phase 4: 傳輸管道 (Chunked IO)
-- [ ] **Step 4.1: 分片管理 (Chunk_Mgr)**: 實作後端分片接收與磁碟臨時區 (`/temp/chunks`) 管理。
-- [ ] **Step 4.2: 檔案合併與註冊 (Merge & Register)**: 完成碎片拼接、雜湊 (SHA256) 校驗與 VFS 登記。
-- [ ] **Step 4.3: 串流下載 (Streaming)**: 實作基於 FastAPI `FileResponse` 的高性能串流下載管道。
-- [ ] **Step 4.4: 碎片垃圾回收 (GC)**: 實作背景清理機制，自動回收未完成的孤兒分片。
+- [ ] **Step 3.1: 資料夾建立 (Mkdir)**: 實作新目錄建立邏輯，包含同名檢查與權限驗證。
+- [ ] **Step 3.2: 名稱與路徑變更 (Rename/Move)**: 實現檔案與資料夾的重新命名與「秒級搬移」（僅修改 `parent_id`）。
+- [ ] **Step 3.3: 邏輯刪除 (Logical Delete)**: 實現 `is_deleted` 標記機制，模擬資源回收桶行為。
+- [ ] **Step 3.4: 實體整合勾子 (Storage Hooks)**: 在 Service 層預留「DB 寫入前 (Pre-Commit)」與「狀態變更後 (Post-Mutation)」的切入點，確保 Phase 4 實體操作能優先於或連動於 VFS 更新。
+
+### Phase 4: 實體傳輸與儲存同步 (Physical Sync & IO)
+- [ ] **Step 4.1: 儲存抽象層 (Storage Provider)**: 實作底層硬碟讀寫與「雙寫一致性」同步引擎，確保 DB 與磁碟同步。
+- [ ] **Step 4.2: 分片傳輸管道 (Chunked Upload)**: 實作分片接收、雜湊 (SHA256) 校驗與背景合併機制。
+- [ ] **Step 4.3: 實體清理與回收 (Physical Cleanup)**: 根據 `is_deleted` 狀態，執行真正的磁碟檔案刪除與孤兒分片回收。
+- [ ] **Step 4.4: 串流下載與預覽 (Streaming & Preview)**: 實作高性能下載管道與多媒體檔案的流式傳輸。
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
