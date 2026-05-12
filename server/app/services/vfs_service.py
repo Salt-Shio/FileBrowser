@@ -80,13 +80,14 @@ class VFSService:
         # 2. 如果不存在，則建立
         if root is None:
             root = Folder(
-                name="Root",
-                parent_id=None,
-                owner_id=owner_id
+                name = "Root",
+                parent_id = None,
+                owner_id = owner_id
             )
             db.add(root)
             await db.commit()
-            await db.refresh(root)
+            await db.refresh(root) 
+            # 有些資料是 commit 後算的，所以需要 refresh 更新 root
         
         return root
 
