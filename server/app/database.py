@@ -27,10 +27,11 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 
 # 3. 建立會話工廠 (Session Factory)
+# expire_on_commit=False 確保 commit 後不會因為全部過期導致有人抱錯
 AsyncSessionLocal = sessionmaker(
     engine, 
     class_=AsyncSession, 
-    expire_on_commit=False
+    expire_on_commit=False 
 )
 
 # 4. 定義模型基底類別
