@@ -98,8 +98,8 @@ graph TD
 ### Phase 2: VFS 結構與瀏覽邏輯 (Metadata & Navigation)
 - [x] **Step 2.1: 元數據建模 (Metadata Schema)**: 建立 `Folder` 與 `File` 模型，包含 UUID, `hash_sha256` 與複合索引優化。
 - [x] **Step 2.2: 導航核心 (Navigation Core)**: 實作「UUID 查詢」邏輯與「麵包屑 (Breadcrumbs) 產生器」。
-- [ ] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
-- [ ] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
+- [x] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
+- [x] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
 
 ### Phase 3: VFS 變更管理 (Mutation & Sync)
 - [ ] **Step 3.1: 事務同步封裝 (Sync Wrapper)**: 實作確保 DB 紀錄與磁碟實體「雙寫一致性」的核心同步邏輯。
