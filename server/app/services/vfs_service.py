@@ -107,7 +107,7 @@ class VFSService:
 
         # 2. 獲取子檔案
         file_stmt = select(File).where(
-            File.parent_id == folder_id,
+            File.folder_id == folder_id,
             File.owner_id == owner_id,
             File.is_deleted == False
         ).order_by(File.name.asc())
