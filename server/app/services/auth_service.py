@@ -11,7 +11,6 @@ from sqlalchemy.future import select
 
 from app.models import User
 from app.security import hasher, otp, jwt
-from app import schemas
 
 class AuthService:
     """
@@ -19,16 +18,16 @@ class AuthService:
     """
 
     @staticmethod
-    async def login(db: AsyncSession, data: schemas.auth.LoginRequest):
+    async def login(db: AsyncSession, username: str, password: str):
         """
         第一階段：密碼驗證
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == data.username))
+        result = await db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         
         # 2. 驗證密碼
-        if not user or not hasher.verify_password(data.password, user.hashed_password):
+        if not user or not hasher.verify_password(password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="帳號或密碼錯誤"
@@ -42,12 +41,12 @@ class AuthService:
         }
 
     @staticmethod
-    async def verify_2fa(db: AsyncSession, data: schemas.auth.Verify2FARequest):
+    async def verify_2fa(db: AsyncSession, username: str, otp_code: str):
         """
         第二階段：2FA 驗證與簽發 JWT
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == data.username))
+        result = await db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         
         if not user:
@@ -57,7 +56,7 @@ class AuthService:
             )
         
         # 2. 驗證 2FA 代碼
-        if not otp.verify_otp_code(user.totp_secret, data.otp_code):
+        if not otp.verify_otp_code(user.totp_secret, otp_code):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="2FA 驗證碼錯誤或已過期"

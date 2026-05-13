@@ -1,1 +1,1 @@
-from . import auth, vfs
+from . import auth, vfs, user

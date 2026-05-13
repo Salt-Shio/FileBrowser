@@ -19,3 +19,11 @@ class Verify2FARequest(BaseModel):
     """
     username: str
     otp_code: str
+
+class LoginResponse(BaseModel):
+    """
+    登入第一階段回傳模型
+    """
+    message: str
+    require_2fa: bool
+    username: str
