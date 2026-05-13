@@ -95,27 +95,30 @@ graph TD
 
 ---
 
-### Phase 2: VFS 結構與瀏覽邏輯 (Metadata & Navigation)
+### Phase 2: VFS 結構與瀏覽邏輯 (Metadata & Navigation) [已完成 100%]
 - [x] **Step 2.1: 元數據建模 (Metadata Schema)**: 建立 `Folder` 與 `File` 模型，包含 UUID, `hash_sha256` 與複合索引優化。
 - [x] **Step 2.2: 導航核心 (Navigation Core)**: 實作「UUID 查詢」邏輯與「麵包屑 (Breadcrumbs) 產生器」。
 - [x] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
 - [x] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
 
-### Phase 3: VFS 邏輯變更管理 (Mutation & Structure)
+### Phase 3: VFS 目錄樹管理 (Folder Management)
+> [!NOTE]
+> **本階段目標**：專注於純邏輯的「目錄結構」維護，不涉及任何實體檔案 IO。
+
+- [ ] **Step 3.0: 基礎優化與 User Schema**: 補齊 `User` 相關 Schema，並將 Service 層風格統一。
+- [ ] **Step 3.1: 目錄建立 (Mkdir)**: 實作資料夾建立，包含同名檢查與權限驗證。
+- [ ] **Step 3.2: 目錄變更 (Folder Rename/Move)**: 僅針對「資料夾」進行重新命名與路徑搬移。
+- [ ] **Step 3.3: 目錄邏輯刪除 (Folder Logical Delete)**: 實現資料夾的 `is_deleted` 標記機制。
+
+### Phase 4: 實體傳輸與檔案管理 (Physical Storage & File VFS)
 > [!IMPORTANT]
 > **設計準則：實體優先 (Physical-First)**
-> 為了避免產生「幽靈資料夾/檔案」（即 DB 有紀錄但實體不存在），設計上必須確保：**只有在 Phase 4 的實體儲存處理成功後，才執行 Phase 3 的 VFS 元數據更新。** Phase 3 的 Service 必須保留良好的擴展接口以實現此順序。
+> 檔案在 VFS 中的「入籍」必須發生在實體儲存成功之後，確保 DB 紀錄與磁碟狀態絕對一致。
 
-- [ ] **Step 3.1: 資料夾建立 (Mkdir)**: 實作新目錄建立邏輯，包含同名檢查與權限驗證。
-- [ ] **Step 3.2: 名稱與路徑變更 (Rename/Move)**: 實現檔案與資料夾的重新命名與「秒級搬移」（僅修改 `parent_id`）。
-- [ ] **Step 3.3: 邏輯刪除 (Logical Delete)**: 實現 `is_deleted` 標記機制，模擬資源回收桶行為。
-- [ ] **Step 3.4: 實體整合勾子 (Storage Hooks)**: 在 Service 層預留「DB 寫入前 (Pre-Commit)」與「狀態變更後 (Post-Mutation)」的切入點，確保 Phase 4 實體操作能優先於或連動於 VFS 更新。
-
-### Phase 4: 實體傳輸與儲存同步 (Physical Sync & IO)
-- [ ] **Step 4.1: 儲存抽象層 (Storage Provider)**: 實作底層硬碟讀寫與「雙寫一致性」同步引擎，確保 DB 與磁碟同步。
-- [ ] **Step 4.2: 分片傳輸管道 (Chunked Upload)**: 實作分片接收、雜湊 (SHA256) 校驗與背景合併機制。
-- [ ] **Step 4.3: 實體清理與回收 (Physical Cleanup)**: 根據 `is_deleted` 狀態，執行真正的磁碟檔案刪除與孤兒分片回收。
-- [ ] **Step 4.4: 串流下載與預覽 (Streaming & Preview)**: 實作高性能下載管道與多媒體檔案的流式傳輸。
+- [ ] **Step 4.1: 儲存抽象層 (Storage Provider)**: 實作底層硬碟讀寫引擎，處理 UUID 檔名與實體路徑映射。
+- [ ] **Step 4.2: 檔案入籍與變更 (File VFS Mutation)**: 實作「檔案」的建立、重新命名、搬移與邏輯刪除邏輯。
+- [ ] **Step 4.3: 分片傳輸管道 (Chunked Upload)**: 實作分片接收、雜湊校驗與背景合併機制。
+- [ ] **Step 4.4: 串流下載與清理 (IO & Cleanup)**: 實作高性能下載管道，以及根據 `is_deleted` 狀態執行的實體清理。
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
