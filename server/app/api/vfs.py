@@ -34,10 +34,8 @@ async def list_directory(
         # 使用者指定了 ID，從資料庫查詢並驗證權限
         current_folder = await VFSService.get_folder_by_id(db, folder_id, current_user.id)
         if not current_folder:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="資料夾不存在或無權限存取"
-            )
+            from app.core.exceptions import NodeNotFoundError
+            raise NodeNotFoundError("資料夾不存在或無權限存取")
         target_id = current_folder.id
 
     # 2. 獲取該目錄下的詳細內容

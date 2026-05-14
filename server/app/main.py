@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 from app.database import init_db
 from app.middleware import RealIPMiddleware
 from app.api import api_router # 匯入總路由
+from starlette.middleware import Middleware
+from app.core.exceptions import BaseBusinessException, business_exception_handler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,13 +21,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="File Explorer",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # 1. 整合 Middleware
+    middleware=[
+        Middleware(RealIPMiddleware)
+    ],
+    # 2. 整合 全域異常處理器
+    exception_handlers={
+        BaseBusinessException: business_exception_handler
+    }
 )
 
-# 1. 註冊 Middleware
-app.add_middleware(RealIPMiddleware)
-
-# 2. 註冊 API 路由 (統一掛載在 /api 之下)
+# 3. 註冊 API 路由 (統一掛載在 /api 之下)
 app.include_router(api_router, prefix="/api")
 
 @app.get("/")

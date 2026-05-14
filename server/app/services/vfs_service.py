@@ -136,8 +136,8 @@ class VFSService:
             # 驗證父目錄是否存在且屬於該使用者
             parent = await VFSService.get_folder_by_id(db, parent_id, owner_id)
             if not parent:
-                from fastapi import HTTPException, status
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="父目錄不存在")
+                from app.core.exceptions import NodeNotFoundError
+                raise NodeNotFoundError("父目錄不存在")
 
         # 2. 檢查同級命名衝突 (排除已邏輯刪除的資料夾)
         conflict_stmt = select(Folder).where(
@@ -148,8 +148,8 @@ class VFSService:
         )
         conflict_res = await db.execute(conflict_stmt)
         if conflict_res.scalars().first():
-            from fastapi import HTTPException, status
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"目錄已存在名為 '{name}' 的資料夾")
+            from app.core.exceptions import DuplicateNodeError
+            raise DuplicateNodeError(f"目錄已存在名為 '{name}' 的資料夾")
 
         # 3. 建立並儲存
         new_folder = Folder(
@@ -196,13 +196,13 @@ class VFSService:
         """
         重新命名虛擬節點 (檔案或資料夾)。
         """
-        from fastapi import HTTPException, status
+        from app.core.exceptions import NodeNotFoundError, DuplicateNodeError
 
         # 1. 獲取目標節點並驗證權限
         if node_type == "folder":
             node = await VFSService.get_folder_by_id(db, node_id, owner_id)
             if not node:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="資料夾不存在")
+                raise NodeNotFoundError("資料夾不存在")
             
             # 檢查同目錄下的命名衝突
             conflict_stmt = select(Folder).where(
@@ -215,7 +215,7 @@ class VFSService:
         elif node_type == "file":
             node = await VFSService.get_file_by_id(db, node_id, owner_id)
             if not node:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="檔案不存在")
+                raise NodeNotFoundError("檔案不存在")
             
             # 檢查同目錄下的命名衝突
             conflict_stmt = select(File).where(
@@ -231,7 +231,7 @@ class VFSService:
         # 2. 執行衝突檢查
         conflict_res = await db.execute(conflict_stmt)
         if conflict_res.scalars().first():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"該目錄下已存在名為 '{new_name}' 的物件")
+            raise DuplicateNodeError(f"該目錄下已存在名為 '{new_name}' 的物件")
 
         # 3. 更新名稱
         node.name = new_name

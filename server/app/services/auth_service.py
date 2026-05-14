@@ -5,7 +5,6 @@
 2. 處理 2FA 驗證流程
 3. 協調 Security 工具與資料庫模型
 """
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -28,10 +27,8 @@ class AuthService:
         
         # 2. 驗證密碼
         if not user or not hasher.verify_password(password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="帳號或密碼錯誤"
-            )
+            from app.core.exceptions import AuthenticationError
+            raise AuthenticationError("帳號或密碼錯誤")
         
         # 3. 簽發 2FA 短效憑證
         two_fa_token = jwt.create_2fa_token(user.username)
@@ -52,10 +49,8 @@ class AuthService:
         # 1. 解碼並驗證憑證 (業務層判斷 Policy)
         payload = jwt.decode_token(two_fa_token)
         if not payload or payload.get("type") != "2fa":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="2FA 憑證無效或已過期，請重新登入"
-            )
+            from app.core.exceptions import InvalidTokenError
+            raise InvalidTokenError("2FA 憑證無效或已過期，請重新登入")
         
         username = payload.get("sub")
 
@@ -64,17 +59,13 @@ class AuthService:
         user = result.scalars().first()
         
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
-                detail="使用者不存在"
-            )
+            from app.core.exceptions import NodeNotFoundError
+            raise NodeNotFoundError("使用者不存在")
         
         # 3. 驗證 2FA 代碼
         if not otp.verify_otp_code(user.totp_secret, otp_code):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="2FA 驗證碼錯誤或已過期"
-            )
+            from app.core.exceptions import AuthenticationError
+            raise AuthenticationError("2FA 驗證碼錯誤或已過期")
         
         # 4. 簽發正式 JWT
         access_token = jwt.create_access_token(data={"sub": user.username})
