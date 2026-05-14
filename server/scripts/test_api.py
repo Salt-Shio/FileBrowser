@@ -78,6 +78,17 @@ def test_vfs_rename(token, node_id, node_type, new_name):
     response = requests.patch(f"{BASE_URL}/vfs/rename", headers=headers, json=payload)
     print(json.dumps(response.json(), indent=4, ensure_ascii=False))
 
+def test_vfs_move(token, node_id, node_type, target_parent_id):
+    print(f"\n[測試] PATCH /vfs/move (id={node_id}, type={node_type}, target_parent={target_parent_id})")
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "node_id": node_id,
+        "node_type": node_type,
+        "target_parent_id": target_parent_id
+    }
+    response = requests.patch(f"{BASE_URL}/vfs/move", headers=headers, json=payload)
+    print(json.dumps(response.json(), indent=4, ensure_ascii=False))
+
 def main():
     # --- 1. 認證流程 ---
     two_fa_token = login(input("user: "), input("password: "))
@@ -102,9 +113,12 @@ def main():
     # 測試建立資料夾
     new_folder = test_vfs_mkdir(access_token, input("輸入資料夾: "), input("父資料夾 ID: "))
     
-    test_vfs_rename(access_token, input("Folder ID: "), "folder", input("更名後的資料夾: "))
+    test_vfs_rename(access_token, input("Rename Node ID: "), "folder", input("更名後的名稱: "))
+    
+    # 測試搬移功能
+    test_vfs_move(access_token, input("Move Node ID: "), "folder", input("目標父目錄 ID: "))
         
-        # 再次列出查看結果
+    # 再次列出查看結果
     test_vfs_ls(access_token)
 
 if __name__ == "__main__":

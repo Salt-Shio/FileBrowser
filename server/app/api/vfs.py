@@ -92,3 +92,20 @@ async def rename_node(
         data.node_type,
         data.new_name
     )
+
+@router.patch("/move")
+async def move_node(
+    data: schemas.vfs.NodeMoveRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    搬移資料夾或檔案到指定目錄。
+    """
+    return await VFSService.move_node(
+        db,
+        current_user.id,
+        data.node_id,
+        data.node_type,
+        data.target_parent_id
+    )

@@ -82,3 +82,11 @@ class NodeRenameRequest(BaseModel):
     node_id: str
     node_type: str  # "file" 或 "folder"
     new_name: str
+
+class NodeMoveRequest(BaseModel):
+    """
+    節點搬移請求模型
+    """
+    node_id: str
+    node_type: str  # "file" 或 "folder"
+    target_parent_id: Optional[str] = None # 若為空則移至 Root

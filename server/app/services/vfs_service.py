@@ -239,3 +239,82 @@ class VFSService:
         await db.refresh(node)
         
         return node
+
+    @staticmethod
+    async def move_node(db: AsyncSession, owner_id: str, node_id: str, node_type: str, target_parent_id: Optional[str] = None):
+        """
+        搬移虛擬節點 (檔案或資料夾) 到新的目錄。
+        包含：防循環檢查、衝突檢查、權限驗證。
+        """
+        from app.core.exceptions import NodeNotFoundError, DuplicateNodeError, BaseBusinessException
+
+        # 1. 獲取目標父目錄
+        if target_parent_id is None:
+            root = await VFSService.get_or_create_root(db, owner_id)
+            target_parent_id = root.id
+        
+        target_folder = await VFSService.get_folder_by_id(db, target_parent_id, owner_id)
+        if not target_folder:
+            raise NodeNotFoundError("目標目錄不存在")
+
+        # 2. 獲取要搬移的節點
+        if node_type == "folder":
+            node = await VFSService.get_folder_by_id(db, node_id, owner_id)
+            if not node:
+                raise NodeNotFoundError("資料夾不存在")
+            
+            # --- [大專案邏輯：防循環檢查] ---
+            # 不能將自己移入自己
+            if node.id == target_parent_id:
+                raise BaseBusinessException("不能將資料夾移入自身", status_code=400)
+            
+            # 溯源檢查：從目標父目錄一路往上爬，看會不會遇到自己
+            curr_trace_id = target_folder.parent_id
+            while curr_trace_id:
+                if curr_trace_id == node.id:
+                    raise BaseBusinessException("不能將資料夾移入其子目錄 (發生循環引用)", status_code=400)
+                
+                # 繼續往上找
+                trace_node = await VFSService.get_folder_by_id(db, curr_trace_id, owner_id)
+                if not trace_node: break
+                curr_trace_id = trace_node.parent_id
+            
+            # 檢查目標目錄下的命名衝突
+            conflict_stmt = select(Folder).where(
+                Folder.parent_id == target_parent_id,
+                Folder.owner_id == owner_id,
+                Folder.name == node.name,
+                Folder.is_deleted == False,
+                Folder.id != node_id
+            )
+        elif node_type == "file":
+            node = await VFSService.get_file_by_id(db, node_id, owner_id)
+            if not node:
+                raise NodeNotFoundError("檔案不存在")
+            
+            # 檢查目標目錄下的命名衝突
+            conflict_stmt = select(File).where(
+                File.folder_id == target_parent_id,
+                File.owner_id == owner_id,
+                File.name == node.name,
+                File.is_deleted == False,
+                File.id != node_id
+            )
+        else:
+            raise BaseBusinessException("無效的節點類型", status_code=400)
+
+        # 3. 執行衝突檢查
+        conflict_res = await db.execute(conflict_stmt)
+        if conflict_res.scalars().first():
+            raise DuplicateNodeError(f"目標目錄下已存在名為 '{node.name}' 的物件")
+
+        # 4. 執行搬移
+        if node_type == "folder":
+            node.parent_id = target_parent_id
+        else:
+            node.folder_id = target_parent_id
+            
+        await db.commit()
+        await db.refresh(node)
+        
+        return node
