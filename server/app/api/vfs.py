@@ -61,3 +61,19 @@ async def search_nodes(
     模糊搜尋使用者擁有的所有資料夾與檔案。
     """
     return await VFSService.search_nodes(db, current_user.id, q)
+
+@router.post("/mkdir", response_model=schemas.vfs.FolderResponse, status_code=status.HTTP_201_CREATED)
+async def create_folder(
+    data: schemas.vfs.FolderCreate,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    建立新的虛擬資料夾。
+    """
+    return await VFSService.create_folder(
+        db, 
+        current_user.id, 
+        data.name, 
+        data.parent_id
+    )

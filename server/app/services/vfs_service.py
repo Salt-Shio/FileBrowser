@@ -124,6 +124,46 @@ class VFSService:
         }
 
     @staticmethod
+    async def create_folder(db: AsyncSession, owner_id: str, name: str, parent_id: Optional[str] = None) -> Folder:
+        """
+        建立一個虛擬資料夾節點 (純虛擬變更)。
+        """
+        # 1. 決定父目錄：若未提供，則設為 Root
+        if parent_id is None:
+            root = await VFSService.get_or_create_root(db, owner_id)
+            parent_id = root.id
+        else:
+            # 驗證父目錄是否存在且屬於該使用者
+            parent = await VFSService.get_folder_by_id(db, parent_id, owner_id)
+            if not parent:
+                from fastapi import HTTPException, status
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="父目錄不存在")
+
+        # 2. 檢查同級命名衝突 (排除已邏輯刪除的資料夾)
+        conflict_stmt = select(Folder).where(
+            Folder.parent_id == parent_id,
+            Folder.owner_id == owner_id,
+            Folder.name == name,
+            Folder.is_deleted == False
+        )
+        conflict_res = await db.execute(conflict_stmt)
+        if conflict_res.scalars().first():
+            from fastapi import HTTPException, status
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"目錄已存在名為 '{name}' 的資料夾")
+
+        # 3. 建立並儲存
+        new_folder = Folder(
+            name=name,
+            parent_id=parent_id,
+            owner_id=owner_id
+        )
+        db.add(new_folder)
+        await db.commit()
+        await db.refresh(new_folder)
+
+        return new_folder
+
+    @staticmethod
     async def search_nodes(db: AsyncSession, owner_id: str, query: str):
         """
         模糊搜尋使用者擁有的所有資料夾與檔案。
