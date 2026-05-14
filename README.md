@@ -110,7 +110,7 @@ graph TD
 - [x] **Step 3.0: 基礎優化與安全強化**: 統一 Service 層參數風格，實作 2FA Token 階段鎖定與 User Schema。
 - [x] **Step 3.1: 虛擬節點建立 (Mkdir)**: 實作資料庫目錄節點建立，確保父子權限正確。
 - [x] **Step 3.2: 節點更名與搬移 (Rename/Move)**: 實作 DB 層級的父子關係變更與命名衝突檢查（秒級移動）。
-- [ ] **Step 3.3: 邏輯刪除與回收站 (Soft Delete)**: 實現 VFS 節點的 `is_deleted` 狀態管理。
+- [x] **Step 3.3: 邏輯刪除與回收站 (Soft Delete)**: 實現 VFS 節點的 `is_deleted` 狀態管理。
 
 ### Phase 4: 實體傳輸與檔案管理 (Physical Storage & File VFS)
 > [!IMPORTANT]
