@@ -39,7 +39,7 @@ async def get_current_user(
     )
     
     # 1. 解碼 Token
-    payload = jwt.decode_access_token(token)
+    payload = jwt.decode_token(token)
     if payload is None:
         raise credentials_exception
     

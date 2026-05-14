@@ -31,7 +31,7 @@ async def verify_2fa(data: schemas.auth.Verify2FARequest, db: AsyncSession = Dep
     """
     第二階段：2FA 驗證與簽發 JWT
     """
-    return await AuthService.verify_2fa(db, data.username, data.otp_code)
+    return await AuthService.verify_2fa(db, data.two_fa_token, data.otp_code)
 
 @router.get("/me", response_model=schemas.user.UserResponse)
 async def get_me(current_user: User = Depends(deps.get_current_user)):

@@ -6,6 +6,8 @@
 """
 from pydantic import BaseModel
 
+from typing import Optional
+
 class LoginRequest(BaseModel):
     """
     登入請求模型
@@ -17,7 +19,7 @@ class Verify2FARequest(BaseModel):
     """
     2FA 驗證請求模型
     """
-    username: str
+    two_fa_token: str
     otp_code: str
 
 class LoginResponse(BaseModel):
@@ -26,4 +28,5 @@ class LoginResponse(BaseModel):
     """
     message: str
     require_2fa: bool
+    two_fa_token: Optional[str] = None
     username: str

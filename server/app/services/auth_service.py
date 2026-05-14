@@ -33,19 +33,33 @@ class AuthService:
                 detail="帳號或密碼錯誤"
             )
         
-        # 3. 返回驗證成功資訊 (需要進行 2FA)
+        # 3. 簽發 2FA 短效憑證
+        two_fa_token = jwt.create_2fa_token(user.username)
+        
+        # 4. 返回驗證成功資訊
         return {
             "message": "密碼驗證成功，請輸入 2FA 驗證碼",
             "require_2fa": True,
+            "two_fa_token": two_fa_token,
             "username": user.username
         }
 
     @staticmethod
-    async def verify_2fa(db: AsyncSession, username: str, otp_code: str):
+    async def verify_2fa(db: AsyncSession, two_fa_token: str, otp_code: str):
         """
         第二階段：2FA 驗證與簽發 JWT
         """
-        # 1. 尋找使用者
+        # 1. 解碼並驗證憑證 (業務層判斷 Policy)
+        payload = jwt.decode_token(two_fa_token)
+        if not payload or payload.get("type") != "2fa":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="2FA 憑證無效或已過期，請重新登入"
+            )
+        
+        username = payload.get("sub")
+
+        # 2. 尋找使用者
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         
@@ -55,14 +69,14 @@ class AuthService:
                 detail="使用者不存在"
             )
         
-        # 2. 驗證 2FA 代碼
+        # 3. 驗證 2FA 代碼
         if not otp.verify_otp_code(user.totp_secret, otp_code):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="2FA 驗證碼錯誤或已過期"
             )
         
-        # 3. 簽發正式 JWT
+        # 4. 簽發正式 JWT
         access_token = jwt.create_access_token(data={"sub": user.username})
         
         return {

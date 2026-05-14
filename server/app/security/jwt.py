@@ -34,7 +34,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def decode_access_token(token: str) -> Optional[dict]:
+def create_2fa_token(username: str) -> str:
+    """
+    簽發一個極短效的 2FA 驗證憑證 (5 分鐘)
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    to_encode = {"sub": username, "exp": expire, "type": "2fa"}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+def decode_token(token: str) -> Optional[dict]:
     """
     解碼並驗證 JWT 權杖
     若驗證失敗或過期，則回傳 None
