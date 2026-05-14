@@ -100,7 +100,7 @@ def main():
     test_vfs_search(access_token, "Root")
 
     # 測試建立資料夾
-    new_folder = test_vfs_mkdir(access_token, input("輸入資料夾: "))
+    new_folder = test_vfs_mkdir(access_token, input("輸入資料夾: "), input("父資料夾 ID: "))
     
     test_vfs_rename(access_token, input("Folder ID: "), "folder", input("更名後的資料夾: "))
         
