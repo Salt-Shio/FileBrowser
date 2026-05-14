@@ -27,8 +27,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         # 預設過期時間 (從設定讀取)
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    # 注入 exp 欄位
-    to_encode.update({"exp": expire})
+    # 注入 exp 與 type 欄位
+    to_encode.update({"exp": expire, "type": "access"})
     
     # 使用 SECRET_KEY 進行簽名加密
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)

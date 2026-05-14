@@ -40,7 +40,7 @@ async def get_current_user(
     
     # 1. 解碼 Token
     payload = jwt.decode_token(token)
-    if payload is None:
+    if payload is None or payload.get("type") != "access":
         raise credentials_exception
     
     # 2. 提取使用者名稱 (sub)
