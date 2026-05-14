@@ -101,14 +101,14 @@ graph TD
 - [x] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
 - [x] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
 
-### Phase 3: VFS 目錄樹管理 (Folder Management)
+### Phase 3: VFS 節點邏輯管理 (Purely Virtual Mutation)
 > [!NOTE]
-> **本階段目標**：專注於純邏輯的「目錄結構」維護，不涉及任何實體檔案 IO。
+> **本階段目標**：專注於純邏輯的「目錄樹節點」維護。在此架構下，目錄僅為資料庫中的虛擬節點，不與磁碟實體資料夾掛鉤。
 
-- [ ] **Step 3.0: 基礎優化與 User Schema**: 補齊 `User` 相關 Schema，並將 Service 層風格統一。
-- [ ] **Step 3.1: 目錄建立 (Mkdir)**: 實作資料夾建立，包含同名檢查與權限驗證。
-- [ ] **Step 3.2: 目錄變更 (Folder Rename/Move)**: 僅針對「資料夾」進行重新命名與路徑搬移。
-- [ ] **Step 3.3: 目錄邏輯刪除 (Folder Logical Delete)**: 實現資料夾的 `is_deleted` 標記機制。
+- [x] **Step 3.0: 基礎優化與安全強化**: 統一 Service 層參數風格，實作 2FA Token 階段鎖定與 User Schema。
+- [x] **Step 3.1: 虛擬節點建立 (Mkdir)**: 實作資料庫目錄節點建立，確保父子權限正確。
+- [ ] **Step 3.2: 節點更名與搬移 (Rename/Move)**: 實作 DB 層級的父子關係變更與命名衝突檢查（秒級移動）。
+- [ ] **Step 3.3: 邏輯刪除與回收站 (Soft Delete)**: 實現 VFS 節點的 `is_deleted` 狀態管理。
 
 ### Phase 4: 實體傳輸與檔案管理 (Physical Storage & File VFS)
 > [!IMPORTANT]
@@ -122,6 +122,10 @@ graph TD
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
+
+### Phase 6: 系統完善與管理 (Admin & Polish)
+- [ ] **Step 6.1: 自助安全管理**: 實作使用者 2FA 綁定流程與密碼修改功能。
+- [ ] **待定**: 根據實測反饋決定後續系統優化項目。
 
 ## 技術棧
 - **Backend**: FastAPI (Python)
