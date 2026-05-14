@@ -33,6 +33,7 @@ class Folder(Base):
     
     # 狀態
     is_deleted = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True)
 
     # 關係設定
     owner = relationship("User", back_populates="folders", foreign_keys=[owner_id])
@@ -80,6 +81,7 @@ class File(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     is_deleted = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True)
 
     # 關係設定
     folder = relationship("Folder", back_populates="files", foreign_keys=[folder_id])

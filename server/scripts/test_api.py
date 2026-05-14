@@ -67,26 +67,36 @@ def test_vfs_mkdir(token, name, parent_id=None):
     print(json.dumps(response.json(), indent=4, ensure_ascii=False))
     return response.json()
 
+def test_vfs_delete(token, node_id, node_type):
+    print(f"\n[測試] POST /vfs/delete (id={node_id}, type={node_type})")
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "node_id": node_id,
+        "node_type": node_type
+    }
+    response = requests.post(f"{BASE_URL}/vfs/delete", headers=headers, json=payload)
+    print(json.dumps(response.json(), indent=4, ensure_ascii=False))
+
 def test_vfs_rename(token, node_id, node_type, new_name):
-    print(f"\n[測試] PATCH /vfs/rename (id={node_id}, type={node_type}, new_name={new_name})")
+    print(f"\n[測試] POST /vfs/rename (id={node_id}, type={node_type}, new_name={new_name})")
     headers = {"Authorization": f"Bearer {token}"}
     payload = {
         "node_id": node_id,
         "node_type": node_type,
         "new_name": new_name
     }
-    response = requests.patch(f"{BASE_URL}/vfs/rename", headers=headers, json=payload)
+    response = requests.post(f"{BASE_URL}/vfs/rename", headers=headers, json=payload)
     print(json.dumps(response.json(), indent=4, ensure_ascii=False))
 
 def test_vfs_move(token, node_id, node_type, target_parent_id):
-    print(f"\n[測試] PATCH /vfs/move (id={node_id}, type={node_type}, target_parent={target_parent_id})")
+    print(f"\n[測試] POST /vfs/move (id={node_id}, type={node_type}, target_parent={target_parent_id})")
     headers = {"Authorization": f"Bearer {token}"}
     payload = {
         "node_id": node_id,
         "node_type": node_type,
         "target_parent_id": target_parent_id
     }
-    response = requests.patch(f"{BASE_URL}/vfs/move", headers=headers, json=payload)
+    response = requests.post(f"{BASE_URL}/vfs/move", headers=headers, json=payload)
     print(json.dumps(response.json(), indent=4, ensure_ascii=False))
 
 def main():
@@ -117,7 +127,10 @@ def main():
     
     # 測試搬移功能
     test_vfs_move(access_token, input("Move Node ID: "), "folder", input("目標父目錄 ID: "))
-        
+    
+    # 測試刪除
+    test_vfs_delete(access_token, input("Delete Node ID: "), "folder")
+
     # 再次列出查看結果
     test_vfs_ls(access_token)
 

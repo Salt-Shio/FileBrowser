@@ -76,7 +76,7 @@ async def create_folder(
         data.parent_id
     )
 
-@router.patch("/rename")
+@router.post("/rename")
 async def rename_node(
     data: schemas.vfs.NodeRenameRequest,
     db: AsyncSession = Depends(deps.get_db),
@@ -93,7 +93,7 @@ async def rename_node(
         data.new_name
     )
 
-@router.patch("/move")
+@router.post("/move")
 async def move_node(
     data: schemas.vfs.NodeMoveRequest,
     db: AsyncSession = Depends(deps.get_db),
@@ -108,4 +108,20 @@ async def move_node(
         data.node_id,
         data.node_type,
         data.target_parent_id
+    )
+
+@router.post("/delete")
+async def delete_node(
+    data: schemas.vfs.NodeDeleteRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    邏輯刪除資料夾或檔案 (Explicit Action)。
+    """
+    return await VFSService.delete_node(
+        db,
+        current_user.id,
+        data.node_id,
+        data.node_type
     )

@@ -8,6 +8,7 @@
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import update
 from app.models.vfs import Folder, File
 from app.schemas.vfs import Breadcrumb
 
@@ -318,3 +319,64 @@ class VFSService:
         await db.refresh(node)
         
         return node
+
+    @staticmethod
+    async def delete_node(db: AsyncSession, owner_id: str, node_id: str, node_type: str):
+        """
+        邏輯刪除節點。若是資料夾，則遞迴標記所有子項。
+        """
+        from datetime import datetime, timezone
+        from app.core.exceptions import NodeNotFoundError, BaseBusinessException
+
+        now = datetime.now(timezone.utc)
+
+        if node_type == "folder":
+            # 1. 驗證根資料夾是否存在
+            root_folder = await VFSService.get_folder_by_id(db, node_id, owner_id)
+            if not root_folder:
+                raise NodeNotFoundError("資料夾不存在")
+
+            # 禁止刪除根目錄
+            if root_folder.parent_id is None:
+                raise BaseBusinessException("禁止刪除根目錄", status_code=400)
+
+            # 2. 獲取所有後代資料夾 ID (遞迴收集)
+            all_folder_ids = [node_id]
+            to_process = [node_id]
+            
+            # BFS add all
+            while to_process:
+                curr_id = to_process.pop()
+                child_stmt = select(Folder.id).where(Folder.parent_id == curr_id, Folder.is_deleted == False)
+                res = await db.execute(child_stmt)
+                child_ids = res.scalars().all()
+                all_folder_ids.extend(child_ids)
+                to_process.extend(child_ids)
+
+            # 3. 批量更新資料夾狀態
+            await db.execute(
+                update(Folder)
+                .where(Folder.id.in_(all_folder_ids))
+                .values(is_deleted=True, deleted_at=now)
+            )
+
+            # 4. 批量更新這些資料夾下的所有檔案
+            await db.execute(
+                update(File)
+                .where(File.folder_id.in_(all_folder_ids))
+                .values(is_deleted=True, deleted_at=now)
+            )
+
+        elif node_type == "file":
+            # 單個檔案刪除
+            node = await VFSService.get_file_by_id(db, node_id, owner_id)
+            if not node:
+                raise NodeNotFoundError("檔案不存在")
+            
+            node.is_deleted = True
+            node.deleted_at = now
+        else:
+            raise BaseBusinessException("無效的節點類型", status_code=400)
+
+        await db.commit()
+        return {"message": "刪除成功", "deleted_nodes_count": "many" if node_type == "folder" else 1}

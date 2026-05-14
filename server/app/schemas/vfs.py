@@ -90,3 +90,10 @@ class NodeMoveRequest(BaseModel):
     node_id: str
     node_type: str  # "file" 或 "folder"
     target_parent_id: Optional[str] = None # 若為空則移至 Root
+
+class NodeDeleteRequest(BaseModel):
+    """
+    節點刪除請求模型
+    """
+    node_id: str
+    node_type: str  # "file" 或 "folder"
