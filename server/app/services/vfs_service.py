@@ -192,7 +192,7 @@ class VFSService:
         }
 
     @staticmethod
-    async def rename_node(db: AsyncSession, owner_id: str, node_type: str, node_id: str, new_name: str):
+    async def rename_node(db: AsyncSession, owner_id: str, node_id: str, node_type: str, new_name: str):
         """
         重新命名虛擬節點 (檔案或資料夾)。
         """

@@ -90,7 +90,7 @@ async def rename_node(
     return await VFSService.rename_node(
         db,
         current_user.id,
-        data.node_type,
         data.node_id,
+        data.node_type,
         data.new_name
     )

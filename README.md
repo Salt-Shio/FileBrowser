@@ -141,3 +141,18 @@ docker-compose up --build -d
 服務啟動後可訪問：
 - **API 文件**: `http://localhost:8000/docs`
 - **前端介面**: `http://localhost:5173` (開發中)
+
+---
+
+## 架構設計思考 (Architectural Thinking)
+
+### 1. 異常處理的層級分工 (Exception Handling)
+**問題**：`HTTPException` 應該在 Service Layer 還是 API Layer 處理？
+**原則**：**「低層拋出訊息，高層決定行為」**。
+- **Service Layer (底層/廚師)**：負責偵測「業務邏輯錯誤」（如：找不到節點、命名衝突）。它應該拋出 **純粹的邏輯異常** (如 `NodeNotFoundError`)，而不是 HTTP 異常。
+- **API Layer (高層/服務生)**：負責將邏輯異常 **「翻譯」** 成適合當前通訊協定的格式（如 `HTTP 404`）。
+- **優點**：確保 Service Layer 的通用性，使其能被 CLI、腳本或背景任務複用，而不依賴於特定的 Web 框架 (FastAPI)。
+
+### 2. Fail-Fast 原則
+- **偵測 (Detection)**：錯誤偵測應離「成因」與「實作地點」越近越好，以便於快速定位問題。
+- **處理 (Handling)**：錯誤處置應拉遠到高層決定，以保持系統整體的彈性與策略一致性。
