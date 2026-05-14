@@ -190,3 +190,52 @@ class VFSService:
             "folders": folders,
             "files": files
         }
+
+    @staticmethod
+    async def rename_node(db: AsyncSession, owner_id: str, node_type: str, node_id: str, new_name: str):
+        """
+        重新命名虛擬節點 (檔案或資料夾)。
+        """
+        from fastapi import HTTPException, status
+
+        # 1. 獲取目標節點並驗證權限
+        if node_type == "folder":
+            node = await VFSService.get_folder_by_id(db, node_id, owner_id)
+            if not node:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="資料夾不存在")
+            
+            # 檢查同目錄下的命名衝突
+            conflict_stmt = select(Folder).where(
+                Folder.parent_id == node.parent_id,
+                Folder.owner_id == owner_id,
+                Folder.name == new_name,
+                Folder.is_deleted == False,
+                Folder.id != node_id
+            )
+        elif node_type == "file":
+            node = await VFSService.get_file_by_id(db, node_id, owner_id)
+            if not node:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="檔案不存在")
+            
+            # 檢查同目錄下的命名衝突
+            conflict_stmt = select(File).where(
+                File.folder_id == node.folder_id,
+                File.owner_id == owner_id,
+                File.name == new_name,
+                File.is_deleted == False,
+                File.id != node_id
+            )
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的節點類型")
+
+        # 2. 執行衝突檢查
+        conflict_res = await db.execute(conflict_stmt)
+        if conflict_res.scalars().first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"該目錄下已存在名為 '{new_name}' 的物件")
+
+        # 3. 更新名稱
+        node.name = new_name
+        await db.commit()
+        await db.refresh(node)
+        
+        return node

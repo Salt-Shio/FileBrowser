@@ -74,3 +74,11 @@ class SearchResponse(BaseModel):
     """
     folders: List[FolderResponse]
     files: List[FileResponse]
+
+class NodeRenameRequest(BaseModel):
+    """
+    節點更名請求模型 (支援檔案與資料夾)
+    """
+    node_id: str
+    node_type: str  # "file" 或 "folder"
+    new_name: str

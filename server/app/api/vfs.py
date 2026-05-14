@@ -77,3 +77,20 @@ async def create_folder(
         data.name, 
         data.parent_id
     )
+
+@router.patch("/rename")
+async def rename_node(
+    data: schemas.vfs.NodeRenameRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    重新命名資料夾或檔案。
+    """
+    return await VFSService.rename_node(
+        db,
+        current_user.id,
+        data.node_type,
+        data.node_id,
+        data.new_name
+    )
