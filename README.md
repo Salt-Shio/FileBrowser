@@ -117,24 +117,27 @@ graph TD
 > **設計準則：實體優先 (Physical-First)**
 > 檔案在 VFS 中的「入籍」必須發生在實體儲存成功之後，確保 DB 紀錄與磁碟狀態絕對一致。
 
-- [ ] **Step 4.1: 檔案系統功能模組 (Filesystem Infrastructure)**
+- [x] **Step 4.1: 檔案系統功能模組 (Filesystem Infrastructure)** [已完成 100%]
     - **`app/filesystem/chunks.py`** (暫存與合併)：
         - 職責：管理分塊暫存、流式合併與增量雜湊計算。
         - 核心函式：`save_chunk()`, `merge_chunks()`, `cleanup_temp()`。
     - **`app/filesystem/storage.py`** (實體存儲)：
         - 職責：管理正式區實體檔案、刪除與路徑檢索。
         - 核心函式：`delete_file()`, `get_full_path()`。
-- [ ] **Step 4.2: 持久化模型 (Upload Session)**
+- [x] **Step 4.2: 持久化模型 (Upload Session)** [已完成 100%]
     - 建立 `UploadSession` 模型，綁定 `owner_id` 與 `target_folder_id`。
     - 職責：追蹤分塊總數、預期雜湊值與會話有效性。
-- [ ] **Step 4.3: 檔案入籍工作流 (VFS Service Flow)**
+- [x] **Step 4.3: 檔案入籍工作流 (VFS Service Flow)** [已完成 100%]
     - **`VFSService` 核心擴充**：
-        - `init_upload()`：驗證權限並啟動會話。
+        - `init_upload()`：驗證權限並啟動會話，實作 **「同名現存檔案」與「活躍上傳會話」的雙重前置衝突防禦**。
         - `upload_chunk()`：處理二進制流寫入。
         - `finalize_upload()`：執行結算（合併 -> 雜湊校驗 -> 建立 File 節點）。
-- [ ] **Step 4.4: 串流下載與清理 (IO & Cleanup)**
+    - **路由層與 API 實作**：註冊三階段 API 端點，並修復了欄位命名不一致導致的 `ResponseValidationError` 回應校驗錯誤。
+- [ ] **Step 4.4: 串流下載與清理 (IO & Cleanup)** [即將進行]
     - 實作高效能 `FileResponse` 下載管道。
-    - 實作定時任務 (GC) 清理逾時的 `UploadSession` 與殘餘碎片。
+    - **GC 與清理機制（重點任務）**：
+        - **定時背景哨兵 (GC)**：於服務啟動時掛載背景協程，定時掃描並**物理刪除資料庫中過期（>24小時）的 `UploadSession` 紀錄**，同步呼叫 `shutil.rmtree` 清除硬碟對應的暫存碎片目錄。
+        - **主動取消 API**：提供 `POST /vfs/upload/cancel`，允許前端主動發起取消以即時清理會話紀錄與碎片檔案。
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。

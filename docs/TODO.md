@@ -8,9 +8,10 @@
 
 ### 1. Step 4.4: 串流下載與清理 (IO & Cleanup) [即將進行]
 * **高效下載管道**：實作 `/vfs/download/{file_id}` 端點，利用 FastAPI 的 `FileResponse` 或是異步串流（StreamingResponse）以優化大檔案下載性能，同時保障擁有者身分權限。
-* **背景碎片回收機制 (Garbage Collection, GC)**：
-  - 當使用者上傳中斷且不再續傳時，暫存碎片會永久滯留在磁碟中。
-  - **任務**：建立一個背景定時任務（如使用 `fastapi_utilities.repeat_every` 或 `apscheduler`），定時掃描並刪除資料庫中建立時間超過 24 小時的過期 `UploadSession`，並同步清理 `/data/temp/<upload_id>` 下的實體殘餘碎片。
+* **背景與主動碎片回收機制 (Garbage Collection & Cancellation, GC)**：
+  - 當使用者上傳中斷且不再續傳時，暫存碎片會永久滯留在磁碟中，過期的會話紀錄也會滯留在資料庫中。
+  - **任務 1：定時背景哨兵 (GC)**：建立一個背景定時任務（例如在 lifespan 啟動時以背景協程循環運行），每小時定時掃描並**物理刪除資料庫中建立時間超過 24 小時的過期 `UploadSession` 紀錄**，並同步呼叫 `shutil.rmtree` 清理 `/data/temp/<upload_id>` 下對應的實體殘餘碎片目錄。
+  - **任務 2：主動取消 API**：新增 `POST /vfs/upload/cancel` 端點，允許前端主動發起取消上傳。一旦呼叫，立刻從資料庫 `DELETE` 該 `UploadSession` 並徹底清除磁碟暫存碎片。
 
 ### 2. Phase 5: 輔助系統與處理 (Media Processor)
 * **非同步媒體處理器**：
