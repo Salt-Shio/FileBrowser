@@ -144,7 +144,11 @@ async def init_upload(
         owner_id=current_user.id,
         target_folder_id=data.target_folder_id
     )
-    return session
+    return {
+        "upload_id": session.id,
+        "filename": session.filename,
+        "total_chunks": session.total_chunks
+    }
 
 
 @router.post("/upload/chunk", response_model=schemas.vfs.UploadChunkResponse)
