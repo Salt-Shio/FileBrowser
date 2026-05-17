@@ -38,3 +38,4 @@ class User(Base):
     # VFS 關聯
     folders = relationship("Folder", back_populates="owner", foreign_keys="[Folder.owner_id]")
     files = relationship("File", back_populates="owner", foreign_keys="[File.owner_id]")
+    upload_sessions = relationship("UploadSession", back_populates="owner", foreign_keys="[UploadSession.owner_id]")
