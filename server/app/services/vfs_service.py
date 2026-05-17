@@ -9,8 +9,9 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
-from app.models.vfs import Folder, File
+from app.models import Folder, File, UploadSession
 from app.schemas.vfs import Breadcrumb
+from app import filesystem
 
 class VFSService:
     """
@@ -380,3 +381,185 @@ class VFSService:
 
         await db.commit()
         return {"message": "刪除成功", "deleted_nodes_count": "many" if node_type == "folder" else 1}
+
+    @staticmethod
+    async def init_upload(
+        db: AsyncSession,
+        filename: str,
+        total_chunks: int,
+        expected_hash: Optional[str],
+        owner_id: str,
+        target_folder_id: Optional[str] = None
+    ) -> UploadSession:
+        """
+        初始化分塊上傳會話 (Step 4.3 第一階段)。
+        """
+        from app.core.exceptions import NodeNotFoundError
+
+        # 1. 決定目標目錄並驗證權限
+        if target_folder_id is None:
+            root = await VFSService.get_or_create_root(db, owner_id)
+            target_folder_id = root.id
+        else:
+            target_folder = await VFSService.get_folder_by_id(db, target_folder_id, owner_id)
+            if not target_folder:
+                raise NodeNotFoundError("目標資料夾不存在或無權限存取")
+
+        # 2. 前置衝突防禦：檢查同名檔案 (File) 是否已存在且未刪除
+        conflict_file_stmt = select(File).where(
+            File.folder_id == target_folder_id,
+            File.owner_id == owner_id,
+            File.name == filename,
+            File.is_deleted == False
+        )
+        conflict_file_res = await db.execute(conflict_file_stmt)
+        if conflict_file_res.scalars().first():
+            from app.core.exceptions import DuplicateNodeError
+            raise DuplicateNodeError(f"目標目錄下已存在同名檔案 '{filename}'")
+
+        # 3. 前置衝突防禦：檢查是否有針對該資料夾同名檔案的活躍上傳會話 (UploadSession)
+        conflict_session_stmt = select(UploadSession).where(
+            UploadSession.target_folder_id == target_folder_id,
+            UploadSession.owner_id == owner_id,
+            UploadSession.filename == filename
+        )
+        conflict_session_res = await db.execute(conflict_session_stmt)
+        if conflict_session_res.scalars().first():
+            from app.core.exceptions import BaseBusinessException
+            raise BaseBusinessException(f"同名檔案 '{filename}' 的上傳會話已在進行中，請勿重複上傳", status_code=400)
+
+        # 4. 建立上傳會話
+        session = UploadSession(
+            owner_id=owner_id,
+            filename=filename,
+            target_folder_id=target_folder_id,
+            total_chunks=total_chunks,
+            expected_hash=expected_hash
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+        return session
+
+    @staticmethod
+    async def upload_chunk(
+        db: AsyncSession,
+        upload_id: str,
+        chunk_index: int,
+        chunk_data: bytes,
+        owner_id: str
+    ) -> None:
+        """
+        上傳單個分塊，包含 IDOR 擁有者校驗與索引校驗 (Step 4.3 第二階段)。
+        """
+        from app.core.exceptions import UploadSessionNotFoundError, UploadSessionValidationError
+
+        # 1. 查詢上傳會話
+        stmt = select(UploadSession).where(UploadSession.id == upload_id)
+        result = await db.execute(stmt)
+        session = result.scalars().first()
+
+        if not session:
+            raise UploadSessionNotFoundError()
+
+        # 2. IDOR 安全防禦：確保上傳者是會話擁有人
+        if session.owner_id != owner_id:
+            from app.core.exceptions import PermissionDeniedError
+            raise PermissionDeniedError("無權存取此上傳會話")
+
+        # 3. 校驗分塊索引合法性
+        if chunk_index < 0 or chunk_index >= session.total_chunks:
+            raise UploadSessionValidationError(f"無效的分塊索引：{chunk_index}，總分塊數為：{session.total_chunks}")
+
+        # 4. 寫入實體暫存
+        await filesystem.save_chunk(upload_id, chunk_index, chunk_data)
+
+    @staticmethod
+    async def finalize_upload(
+        db: AsyncSession,
+        upload_id: str,
+        owner_id: str
+    ) -> File:
+        """
+        物理合併暫存碎片、進行雜湊校驗、在資料庫完成虛擬「入籍」，最後清理暫存區 (Step 4.3 第三階段)。
+        """
+        from mimetypes import guess_type
+        from app.core.exceptions import PermissionDeniedError, UploadSessionNotFoundError, UploadSessionValidationError
+
+        # 1. 獲取會話並強校驗擁有者權限
+        stmt = select(UploadSession).where(UploadSession.id == upload_id)
+        result = await db.execute(stmt)
+        session = result.scalars().first()
+
+        if not session:
+            raise UploadSessionNotFoundError()
+
+        if session.owner_id != owner_id:
+            raise PermissionDeniedError("無權存取此上傳會話")
+
+        # 2. 檢索現有已上傳的分塊索引列表
+        uploaded_chunks = await filesystem.list_chunks(upload_id)
+        missing_chunks = [i for i in range(session.total_chunks) if i not in uploaded_chunks]
+        
+        if missing_chunks:
+            raise UploadSessionValidationError(f"分塊尚未上傳完畢，缺失分塊索引：{missing_chunks}")
+
+        # 3. 流式物理合併所有碎片並計算大小與 SHA256 雜湊
+        try:
+            merged_info = await filesystem.merge_from_chunks(upload_id, session.total_chunks)
+        except Exception as e:
+            raise UploadSessionValidationError(f"實體合併失敗：{str(e)}")
+
+        # 4. 校驗雜湊完整性 (比對前端預期與實體合併計算的 Hash)
+        if session.expected_hash:
+            calculated_hash = merged_info["hash"]
+            if calculated_hash.lower() != session.expected_hash.lower():
+                # 雜湊不符，代表檔案傳輸損毀，物理刪除剛合併的正式檔案並拋出異常
+                await filesystem.delete_file(merged_info["storage_name"])
+                raise UploadSessionValidationError("檔案雜湊校驗失敗 (Hash mismatch)，檔案可能在傳輸中損毀。")
+
+        # 5. 檔案「正式入籍」虛擬檔案系統 (VFS)
+        # 決定目標虛擬資料夾，若無則歸屬於使用者的 Root
+        target_folder_id = session.target_folder_id
+        if not target_folder_id:
+            root = await VFSService.get_or_create_root(db, owner_id)
+            target_folder_id = root.id
+
+        # 檢查目標目錄下的命名衝突
+        conflict_stmt = select(File).where(
+            File.folder_id == target_folder_id,
+            File.owner_id == owner_id,
+            File.name == session.filename,
+            File.is_deleted == False
+        )
+        conflict_res = await db.execute(conflict_stmt)
+        if conflict_res.scalars().first():
+            # 有同名檔案，物理刪除剛合併的正式檔案並拋出異常
+            await filesystem.delete_file(merged_info["storage_name"])
+            from app.core.exceptions import DuplicateNodeError
+            raise DuplicateNodeError(f"目標目錄下已存在名為 '{session.filename}' 的檔案")
+
+        # 推測檔案 MIME 類型
+        mime_type, _ = guess_type(session.filename)
+
+        new_file = File(
+            name=session.filename,
+            folder_id=target_folder_id,
+            owner_id=owner_id,
+            size=merged_info["size"],
+            mime_type=mime_type,
+            storage_path=merged_info["storage_name"],
+            hash_sha256=merged_info["hash"]
+        )
+        db.add(new_file)
+
+        # 6. 物理清理暫存碎塊會話與碎片
+        db.delete(session)
+        await db.commit()
+        await db.refresh(new_file)
+
+        # 清除暫存目錄碎片
+        await filesystem.cleanup_temp(upload_id)
+
+        return new_file
+
