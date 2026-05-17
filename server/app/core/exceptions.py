@@ -51,6 +51,23 @@ class InvalidTokenError(BaseBusinessException):
         super().__init__(message, status_code=401)
 
 
+class UploadSessionNotFoundError(BaseBusinessException):
+    """
+    找不到指定的上傳會話
+    """
+    def __init__(self, message: str = "找不到指定的上傳會話"):
+        super().__init__(message, status_code=404)
+
+
+class UploadSessionValidationError(BaseBusinessException):
+    """
+    上傳會話校驗錯誤（例如分塊缺失或雜湊不符）
+    """
+    def __init__(self, message: str = "上傳會話資料校驗錯誤"):
+        super().__init__(message, status_code=400)
+
+
+
 async def business_exception_handler(request: Request, exc: BaseBusinessException):
     """
     統一處理所有繼承自 BaseBusinessException 的異常
