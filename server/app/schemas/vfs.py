@@ -97,3 +97,37 @@ class NodeDeleteRequest(BaseModel):
     """
     node_id: str
     node_type: str  # "file" 或 "folder"
+
+
+class UploadInitRequest(BaseModel):
+    """
+    初始化分塊上傳請求模型
+    """
+    filename: str
+    total_chunks: int
+    expected_hash: Optional[str] = None
+    target_folder_id: Optional[str] = None
+
+
+class UploadInitResponse(BaseModel):
+    """
+    初始化分塊上傳回傳模型
+    """
+    upload_id: str
+    filename: str
+    total_chunks: int
+
+
+class UploadChunkResponse(BaseModel):
+    """
+    上傳分塊回傳模型
+    """
+    message: str
+    chunk_index: int
+
+
+class UploadFinalizeRequest(BaseModel):
+    """
+    結算上傳請求模型
+    """
+    upload_id: str
