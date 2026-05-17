@@ -6,7 +6,7 @@
 import asyncio
 from sqlalchemy import select
 from app.database import AsyncSessionLocal
-from app.models.user import User
+from app.models import User
 from app.security import otp
 from app.core.config import settings
 
