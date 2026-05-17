@@ -103,24 +103,38 @@ graph TD
 - [x] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
 - [x] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
 
-### Phase 3: VFS 節點邏輯管理 (Purely Virtual Mutation)
+### Phase 3: VFS 節點邏輯管理 (Purely Virtual Mutation) [已完成 100%]
 > [!NOTE]
 > **本階段目標**：專注於純邏輯的「目錄樹節點」維護。在此架構下，目錄僅為資料庫中的虛擬節點，不與磁碟實體資料夾掛鉤。
 
 - [x] **Step 3.0: 基礎優化與安全強化**: 統一 Service 層參數風格，實作 2FA Token 階段鎖定與 User Schema。
-- [x] **Step 3.1: 虛擬節點建立 (Mkdir)**: 實作資料庫目錄節點建立，確保父子權限正確。
-- [x] **Step 3.2: 節點更名與搬移 (Rename/Move)**: 實作 DB 層級的父子關係變更與命名衝突檢查（秒級移動）。
-- [x] **Step 3.3: 邏輯刪除與回收站 (Soft Delete)**: 實現 VFS 節點的 `is_deleted` 狀態管理。
+- [x] **Step 3.1: 虛擬節點建立 (Mkdir)**：實作具備同級命名衝突檢查的目錄建立。
+- [x] **Step 3.2: 節點更名與搬移 (Rename/Move)**：實作防循環引用的目錄/檔案搬移邏輯。
+- [x] **Step 3.3: 邏輯刪除與回收站 (Soft Delete)**：實作遞迴邏輯刪除與根目錄保護機制。
 
 ### Phase 4: 實體傳輸與檔案管理 (Physical Storage & File VFS)
 > [!IMPORTANT]
 > **設計準則：實體優先 (Physical-First)**
 > 檔案在 VFS 中的「入籍」必須發生在實體儲存成功之後，確保 DB 紀錄與磁碟狀態絕對一致。
 
-- [ ] **Step 4.1: 儲存抽象層 (Storage Provider)**: 實作底層硬碟讀寫引擎，處理 UUID 檔名與實體路徑映射。
-- [ ] **Step 4.2: 檔案入籍與變更 (File VFS Mutation)**: 實作「檔案」的建立、重新命名、搬移與邏輯刪除邏輯。
-- [ ] **Step 4.3: 分片傳輸管道 (Chunked Upload)**: 實作分片接收、雜湊校驗與背景合併機制。
-- [ ] **Step 4.4: 串流下載與清理 (IO & Cleanup)**: 實作高性能下載管道，以及根據 `is_deleted` 狀態執行的實體清理。
+- [ ] **Step 4.1: 檔案系統功能模組 (Filesystem Infrastructure)**
+    - **`app/filesystem/chunks.py`** (暫存與合併)：
+        - 職責：管理分塊暫存、流式合併與增量雜湊計算。
+        - 核心函式：`save_chunk()`, `merge_chunks()`, `cleanup_temp()`。
+    - **`app/filesystem/storage.py`** (實體存儲)：
+        - 職責：管理正式區實體檔案、刪除與路徑檢索。
+        - 核心函式：`delete_file()`, `get_full_path()`。
+- [ ] **Step 4.2: 持久化模型 (Upload Session)**
+    - 建立 `UploadSession` 模型，綁定 `owner_id` 與 `target_folder_id`。
+    - 職責：追蹤分塊總數、預期雜湊值與會話有效性。
+- [ ] **Step 4.3: 檔案入籍工作流 (VFS Service Flow)**
+    - **`VFSService` 核心擴充**：
+        - `init_upload()`：驗證權限並啟動會話。
+        - `upload_chunk()`：處理二進制流寫入。
+        - `finalize_upload()`：執行結算（合併 -> 雜湊校驗 -> 建立 File 節點）。
+- [ ] **Step 4.4: 串流下載與清理 (IO & Cleanup)**
+    - 實作高效能 `FileResponse` 下載管道。
+    - 實作定時任務 (GC) 清理逾時的 `UploadSession` 與殘餘碎片。
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
