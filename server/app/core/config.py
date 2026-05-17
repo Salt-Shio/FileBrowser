@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # 資料庫與存儲
     DATABASE_URL: str = os.getenv("DATABASE_URL")
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/app/data/uploads")
+    TEMP_DIR: str = os.getenv("TEMP_DIR", "/app/data/temp")
     
     # 初始管理員 (Step 1.3 會用到)
     ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME")
