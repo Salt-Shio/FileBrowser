@@ -8,7 +8,7 @@
 import asyncio
 from sqlalchemy import select
 from app.database import AsyncSessionLocal
-from app.models.user import User
+from app.models import User
 from app.security.hasher import get_password_hash
 from app.security.otp import generate_otp_secret, get_provisioning_uri
 from app.core.config import settings
