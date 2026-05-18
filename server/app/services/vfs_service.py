@@ -12,6 +12,7 @@ from sqlalchemy import update
 from app.models import Folder, File, UploadSession
 from app.schemas.vfs import Breadcrumb
 from app import filesystem
+from app.core.exceptions import NodeNotFoundError, PermissionDeniedError
 
 class VFSService:
     """
@@ -44,6 +45,30 @@ class VFSService:
         )
         result = await db.execute(stmt)
         return result.scalars().first()
+
+    @staticmethod
+    async def prepare_download(db: AsyncSession, file_id: str, owner_id: str) -> File:
+        """
+        準備下載檔案：驗證檔案存在性、所有權與實體磁碟存在性。
+        """
+        # 1. 查詢檔案元數據
+        stmt = select(File).where(File.id == file_id)
+        result = await db.execute(stmt)
+        file_obj = result.scalars().first()
+        
+        # 2. 驗證檔案是否存在與是否被刪除
+        if not file_obj or file_obj.is_deleted:
+            raise NodeNotFoundError("檔案不存在或無權限存取")
+            
+        # 3. 驗證檔案所有權
+        if file_obj.owner_id != owner_id:
+            raise PermissionDeniedError("權限不足，無法存取此檔案")
+            
+        # 4. 驗證實體磁碟檔案是否存在
+        if not await filesystem.exists(file_obj.storage_path):
+            raise NodeNotFoundError("下載失敗：實體檔案已遺失")
+            
+        return file_obj
 
     @staticmethod
     async def get_breadcrumbs(db: AsyncSession, folder_id: Optional[str], owner_id: str) -> List[Breadcrumb]:
@@ -562,4 +587,80 @@ class VFSService:
         await filesystem.cleanup_temp(upload_id)
 
         return new_file
+
+    @staticmethod
+    async def get_upload_status(
+        db: AsyncSession,
+        upload_id: str,
+        owner_id: str
+    ) -> dict:
+        """
+        獲取分塊上傳會話的進度狀態與缺失分塊。
+        """
+        from app.core.exceptions import UploadSessionNotFoundError
+
+        # 1. 查詢上傳會話
+        stmt = select(UploadSession).where(UploadSession.id == upload_id)
+        result = await db.execute(stmt)
+        session = result.scalars().first()
+
+        if not session:
+            raise UploadSessionNotFoundError()
+
+        # 2. 安全防禦：確保查詢者是會話擁有人
+        if session.owner_id != owner_id:
+            raise PermissionDeniedError("無權存取此上傳會話")
+
+        # 3. 讀取實體已存在的分塊列表 (呼叫原子操作 list_chunks)
+        uploaded_chunks = await filesystem.list_chunks(upload_id)
+        uploaded_chunks.sort()
+
+        # 4. 計算缺失分塊 (差集)
+        all_chunks_set = set(range(session.total_chunks))
+        uploaded_chunks_set = set(uploaded_chunks)
+        missing_chunks = list(all_chunks_set - uploaded_chunks_set)
+        missing_chunks.sort()
+
+        return {
+            "upload_id": session.id,
+            "filename": session.filename,
+            "total_chunks": session.total_chunks,
+            "uploaded_chunks": uploaded_chunks,
+            "missing_chunks": missing_chunks
+        }
+
+    @staticmethod
+    async def cancel_upload(
+        db: AsyncSession,
+        upload_id: str,
+        owner_id: str
+    ) -> dict:
+        """
+        主動取消上傳會話，清除資料庫紀錄並物理刪除磁碟暫存分塊目錄。
+        """
+        from app.core.exceptions import UploadSessionNotFoundError
+
+        # 1. 查詢上傳會話
+        stmt = select(UploadSession).where(UploadSession.id == upload_id)
+        result = await db.execute(stmt)
+        session = result.scalars().first()
+
+        if not session:
+            raise UploadSessionNotFoundError()
+
+        # 2. 安全防禦：確保取消者是會話擁有人 (IDOR 防禦)
+        if session.owner_id != owner_id:
+            raise PermissionDeniedError("無權存取此上傳會話")
+
+        # 3. 刪除資料庫會話記錄
+        await db.delete(session)
+        await db.commit()
+
+        # 4. 物理物理原子操作清理磁碟暫存分塊
+        await filesystem.cleanup_temp(upload_id)
+
+        return {
+            "message": "上傳會話與磁碟暫存已成功取消並物理清除",
+            "upload_id": upload_id
+        }
 
