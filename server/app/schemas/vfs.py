@@ -131,3 +131,29 @@ class UploadFinalizeRequest(BaseModel):
     結算上傳請求模型
     """
     upload_id: str
+
+
+class UploadStatusResponse(BaseModel):
+    """
+    上傳進度探測回傳模型
+    """
+    upload_id: str
+    filename: str
+    total_chunks: int
+    uploaded_chunks: List[int]
+    missing_chunks: List[int]
+
+
+class UploadCancelRequest(BaseModel):
+    """
+    取消上傳請求模型
+    """
+    upload_id: str
+
+
+class UploadCancelResponse(BaseModel):
+    """
+    取消上傳回傳模型
+    """
+    message: str
+    upload_id: str
