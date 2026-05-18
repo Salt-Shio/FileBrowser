@@ -154,6 +154,20 @@ def test_vfs_upload(token, filename="chunk_test.txt", target_folder_id=None):
             print("        [!] 分塊上傳失敗，終止測試。")
             return
             
+        # 額外安全測試：在上傳完第一個分塊後，呼叫進度探測 API 驗證功能
+        if idx == 0:
+            print("\n        🔍 [安全狀態測試] 正在調用 GET /vfs/upload/status/{upload_id} 探測伺服器已收到的分片狀態...")
+            status_res = requests.get(f"{BASE_URL}/vfs/upload/status/{upload_id}", headers=headers)
+            print(f"        探測 API 狀態碼: {status_res.status_code}")
+            status_data = status_res.json()
+            print(f"        探測回應結果: {json.dumps(status_data, indent=4, ensure_ascii=False)}")
+            
+            # 驗證內容
+            if status_res.status_code == 200 and status_data["uploaded_chunks"] == [0]:
+                print("        🎉 [狀態探測測試成功] 伺服器成功識別分片 0 落籍，且準確傳回差集缺失分片列表！\n")
+            else:
+                print("        ❌ [狀態探測測試失敗] 伺服器返回的分片狀態與預期不符！\n")
+            
     # 4. 第三階段：結算合併入籍
     print("\n    --> [階段三] 檔案合併與入籍結算 (POST /vfs/upload/finalize)...")
     finalize_payload = {
@@ -165,8 +179,59 @@ def test_vfs_upload(token, filename="chunk_test.txt", target_folder_id=None):
     
     if finalize_res.status_code == 200:
         print("\n🎉 [測試成功] 分塊上傳與 VFS 檔案入籍已順利完成！")
+        return finalize_res.json()
     else:
         print("\n❌ [測試失敗] 檔案結算入籍失敗。")
+        return None
+
+
+def test_vfs_download(token, file_id, expected_hash, expected_filename):
+    print(f"\n[測試] 開始檔案下載測試: {expected_filename} (ID: {file_id})...")
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{BASE_URL}/vfs/download/{file_id}"
+    
+    # 進行串流下載，避免大檔案將記憶體撐爆
+    response = requests.get(url, headers=headers, stream=True)
+    print(f"    狀態碼: {response.status_code}")
+    
+    if response.status_code != 200:
+        print(f"    ❌ [測試失敗] 下載失敗，回應: {response.text}")
+        return False
+        
+    # 1. 檢查 Content-Disposition 標頭中的檔名
+    content_disposition = response.headers.get("Content-Disposition", "")
+    print(f"    回應 Content-Disposition: {content_disposition}")
+    
+    # 2. 檢查 HTTP 快取 ETag 標頭
+    etag = response.headers.get("ETag", "").strip('"')
+    print(f"    回應 ETag 標頭雜湊值: {etag}")
+    
+    # 3. 串流下載並計算 SHA256
+    sha256 = hashlib.sha256()
+    downloaded_size = 0
+    
+    for chunk in response.iter_content(chunk_size=8192):
+        if chunk:
+            sha256.update(chunk)
+            downloaded_size += len(chunk)
+            
+    downloaded_hash = sha256.hexdigest()
+    print(f"    下載檔案實際大小: {downloaded_size} bytes")
+    print(f"    下載檔案實際雜湊 (SHA256): {downloaded_hash}")
+    print(f"    伺服器預期雜湊 (ETag): {etag}")
+    
+    # 4. 驗證完整性與 ETag 一致性
+    if downloaded_hash != expected_hash:
+        print("\n❌ [下載測試失敗] 下載檔案實際雜湊與預期不符！")
+        return False
+        
+    if etag != expected_hash:
+        print("\n❌ [下載測試失敗] 響應中的 ETag 標頭與預期雜湊不符！")
+        return False
+        
+    print("\n🎉 [下載測試成功] 檔案大小、實體雜湊與 HTTP ETag 標頭全部完全一致！")
+    return True
+
 
 def main():
     # --- 1. 認證流程 ---
@@ -202,10 +267,22 @@ def main():
 
     # 測試分塊上傳功能
     do_upload = input("\n是否測試三階段分塊上傳功能 (y/n)? ")
+    uploaded_file = None
     if do_upload.lower() == "y":
         filename = input("    請輸入測試上傳的檔名 (預設: chunk_test.txt): ") or "chunk_test.txt"
         target_folder = input("    請輸入目標資料夾 ID (直接 Enter 則上傳至 Root): ") or None
-        test_vfs_upload(access_token, filename=filename, target_folder_id=target_folder)
+        uploaded_file = test_vfs_upload(access_token, filename=filename, target_folder_id=target_folder)
+
+    # 測試下載功能
+    if uploaded_file:
+        do_download = input("\n是否測試剛上傳檔案之安全下載功能 (y/n)? ")
+        if do_download.lower() == "y":
+            test_vfs_download(
+                token=access_token,
+                file_id=uploaded_file["id"],
+                expected_hash=uploaded_file["hash_sha256"],
+                expected_filename=uploaded_file["name"]
+            )
 
     # 再次列出查看結果
     test_vfs_ls(access_token)
