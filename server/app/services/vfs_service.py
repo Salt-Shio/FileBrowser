@@ -554,7 +554,7 @@ class VFSService:
         db.add(new_file)
 
         # 6. 物理清理暫存碎塊會話與碎片
-        db.delete(session)
+        await db.delete(session)
         await db.commit()
         await db.refresh(new_file)
 

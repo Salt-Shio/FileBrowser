@@ -106,11 +106,12 @@ def test_vfs_upload(token, filename="chunk_test.txt", target_folder_id=None):
     headers = {"Authorization": f"Bearer {token}"}
     
     # 1. 產生模擬檔案內容與計算預期 SHA256
-    file_content = b"Hello, Antigravity! This is a test file for chunked uploading. It consists of multiple chunks to test stream merging and integrity checks."
+    import os
+    file_content = b"Hello, Antigravity! This is a test file for chunked uploading. It consists of multiple chunks to test stream merging and integrity checks." + os.urandom(1024 * 1024 * 10)
     expected_hash = hashlib.sha256(file_content).hexdigest()
     
-    # 將內容切分成 3 塊
-    chunk_size = 30
+    # 進行切分上傳，每塊 2MB
+    chunk_size = 2 * 1024 * 1024
     chunks = [file_content[i:i+chunk_size] for i in range(0, len(file_content), chunk_size)]
     total_chunks = len(chunks)
     print(f"    模擬檔案大小: {len(file_content)} bytes, 將切分為 {total_chunks} 個分塊上傳。")
