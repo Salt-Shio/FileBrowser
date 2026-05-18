@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME")
     ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD")
 
+    # 背景垃圾回收 (GC) 設定
+    UPLOAD_SESSION_EXPIRE_HOURS: int = int(os.getenv("UPLOAD_SESSION_EXPIRE_HOURS", 24))
+    GC_INTERVAL_SECONDS: int = int(os.getenv("GC_INTERVAL_SECONDS", 3600))
+
     class Config:
         case_sensitive = True
 
