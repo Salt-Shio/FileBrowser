@@ -7,12 +7,14 @@
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status, Form, File, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.services.vfs_service import VFSService
-from app import schemas
+from app import schemas, filesystem
 from app.models import User
+from app.core.exceptions import NodeNotFoundError
 
 router = APIRouter()
 
@@ -34,7 +36,6 @@ async def list_directory(
         # 使用者指定了 ID，從資料庫查詢並驗證權限
         current_folder = await VFSService.get_folder_by_id(db, folder_id, current_user.id)
         if not current_folder:
-            from app.core.exceptions import NodeNotFoundError
             raise NodeNotFoundError("資料夾不存在或無權限存取")
         target_id = current_folder.id
 
@@ -177,6 +178,38 @@ async def upload_chunk(
     }
 
 
+@router.get("/upload/status/{upload_id}", response_model=schemas.vfs.UploadStatusResponse)
+async def get_upload_status(
+    upload_id: str,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+) -> schemas.vfs.UploadStatusResponse:
+    """
+    查詢分塊上傳進度，返回已成功上傳的分塊列表與缺失的分塊列表。
+    """
+    return await VFSService.get_upload_status(
+        db=db,
+        upload_id=upload_id,
+        owner_id=current_user.id
+    )
+
+
+@router.post("/upload/cancel", response_model=schemas.vfs.UploadCancelResponse)
+async def cancel_upload(
+    data: schemas.vfs.UploadCancelRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+) -> schemas.vfs.UploadCancelResponse:
+    """
+    主動取消上傳會話，立即清除所有資料庫紀錄與磁碟暫存分塊碎片。
+    """
+    return await VFSService.cancel_upload(
+        db=db,
+        upload_id=data.upload_id,
+        owner_id=current_user.id
+    )
+
+
 @router.post("/upload/finalize", response_model=schemas.vfs.FileResponse)
 async def finalize_upload(
     data: schemas.vfs.UploadFinalizeRequest,
@@ -190,5 +223,44 @@ async def finalize_upload(
         db=db,
         upload_id=data.upload_id,
         owner_id=current_user.id
+    )
+
+
+@router.get("/download/{file_id}", response_class=FileResponse)
+async def download_file(
+    file_id: str,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+) -> FileResponse:
+    """
+    下載指定 UUID 的檔案。
+    
+    安全與效能設計：
+    1. 身份與所有權驗證 (限 Owner 下載)
+    2. 物理存在性雙重校驗 (預防 Metadata 殘留但檔案遺失)
+    3. 流式傳輸與 HTTP Range 支援 (斷點續傳)
+    4. 安全遮蔽實體名稱，並在標頭綁定原始檔案名稱
+    """
+    # 1. 業務驗證與物理校驗
+    file_obj = await VFSService.prepare_download(
+        db=db,
+        file_id=file_id,
+        owner_id=current_user.id
+    )
+
+    # 2. 取得絕對實體路徑
+    physical_path = filesystem.get_full_path(file_obj.storage_path)
+
+    # 3. 封裝安全與快取校驗標頭 (ETag)
+    headers = {
+        "ETag": f'"{file_obj.hash_sha256}"'
+    }
+
+    # 4. 回傳 FileResponse 串流
+    return FileResponse(
+        path=physical_path,
+        filename=file_obj.name,
+        media_type=file_obj.mime_type or "application/octet-stream",
+        headers=headers
     )
 
