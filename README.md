@@ -133,11 +133,11 @@ graph TD
         - `upload_chunk()`：處理二進制流寫入。
         - `finalize_upload()`：執行結算（合併 -> 雜湊校驗 -> 建立 File 節點）。
     - **路由層與 API 實作**：註冊三階段 API 端點，並修復了欄位命名不一致導致的 `ResponseValidationError` 回應校驗錯誤。
-- [ ] **Step 4.4: 串流下載與清理 (IO & Cleanup)** [即將進行]
-    - 實作高效能 `FileResponse` 下載管道。
-    - **GC 與清理機制（重點任務）**：
-        - **定時背景哨兵 (GC)**：於服務啟動時掛載背景協程，定時掃描並**物理刪除資料庫中過期（>24小時）的 `UploadSession` 紀錄**，同步呼叫 `shutil.rmtree` 清除硬碟對應的暫存碎片目錄。
-        - **主動取消 API**：提供 `POST /vfs/upload/cancel`，允許前端主動發起取消以即時清理會話紀錄與碎片檔案。
+- [/] **Step 4.4: 串流下載與清理 (IO & Cleanup)** [進行中]
+    - [x] **高效下載管道 (包含 ETag 整合)**：實作帶安全 ETag 快取校驗與 Range 續傳支援的 `FileResponse` 流式下載端點。
+    - [ ] **上傳進度探測 API**：提供 `GET /vfs/upload/status/{upload_id}`，允許前端在斷線重連後探測伺服器已收到的分塊，跳過重複傳輸。
+    - [ ] **主動取消 API**：提供 `POST /vfs/upload/cancel`，允許前端主動發起取消以即時清理會話紀錄與暫存碎片檔案。
+    - [ ] **定時背景哨兵 (GC)**：於服務啟動時掛載背景協程，定時物理清除資料庫中過期（>24小時）的活躍會話，並清除對應的磁碟暫存。
 
 ### Phase 5: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
