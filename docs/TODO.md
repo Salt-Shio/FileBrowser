@@ -40,3 +40,9 @@
 * **背景**：當前端因網路震盪，針對同一個會話發送兩次 `/finalize` 請求時，可能會造成競態條件 (Race Condition)。
 * **優化建議**：
   - 在 `finalize_upload()` 中使用分散式鎖（或在資料庫使用 `SELECT FOR UPDATE`），在開始合併前，先將 `UploadSession` 標記為 `processing`，阻止併發結算。
+
+### 3. 2FA 備用復原碼實作 (2FA Recovery Codes)
+* **背景**：當使用者開啟 2FA 後，若不慎遺失或更換安裝了 Authenticator App 的行動裝置，將導致無法登入且無法自助停用 2FA。
+* **優化建議**：
+  - 在使用者成功啟用 2FA（`/2fa/enable`）時，同時產生 8~10 組一次性使用的備用復原碼（Recovery Codes），加密儲存於資料庫中，並回傳給前端提示使用者進行下載/備份。
+  - 在登入或驗證階段，支援輸入備用復原碼作為繞過 2FA OTP 的一次性登入憑證。

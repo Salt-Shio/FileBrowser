@@ -127,6 +127,10 @@ class AuthService:
             from app.core.exceptions import NodeNotFoundError
             raise NodeNotFoundError("使用者不存在")
 
+        if user.is_totp_enabled:
+            from app.core.exceptions import BaseBusinessException
+            raise BaseBusinessException("已啟用 2FA，若要重新綁定請先停用舊的 2FA", status_code=400)
+
         # 2. 產生金鑰
         secret = otp.generate_otp_secret()
         
