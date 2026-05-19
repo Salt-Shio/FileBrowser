@@ -152,14 +152,17 @@ async def run_gc_sentinel():
     logger.info("[GC] 垃圾回收背景守護哨兵已成功啟動！")
     while True:
         try:
-            # 根據 settings 裡配置的週期進行非同步睡眠，不佔用 CPU 執行緒
-            await anyio.sleep(settings.GC_INTERVAL_SECONDS)
             logger.info("[GC] 開始執行定時垃圾回收盤點...")
             async with AsyncSessionLocal() as db:
                 res = await run_expired_uploads_gc(db)
                 logger.info(f"[GC] 盤點結果: {res}")
+            
+            # 盤點完成後，根據 settings 裡配置的週期進行非同步睡眠
+            await anyio.sleep(settings.GC_INTERVAL_SECONDS)
         except anyio.get_cancelled_exc_class():
             logger.warning("[GC] 背景哨兵收到取消信號，正在優雅退出...")
             break
         except Exception as e:
             logger.error(f"[GC] 哨兵循環發生非預期異常: {e}")
+            # 發生異常時也稍微等待，避免無窮迴圈暴走
+            await anyio.sleep(5)
