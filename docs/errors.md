@@ -89,3 +89,65 @@ if uploaded == [0, 1] and missing == expected_missing:
 ### 🛡️ 預防方式
 1. 撰寫整合或單元測試的 Mock 斷言時，**切忌硬編碼預期值**。
 2. 應該依據上游變量（如本例中的 `total_chunks`）動態計算出預期邊界值，使測試兼具靈活性與健壯度。
+
+---
+
+## 4. 2026-05-18: AnyIO `run_sync` 誤傳協程函式導致 GC 靜默失效問題 (Coroutine Silent Bypass)
+
+### 📌 問題現象
+* **狀況**：大掃除垃圾回收（GC）在運行時，本該檢查實體暫存資料夾是否存在，若過期則實體刪除；但測試中發現超時的物理目錄始終滯留，背景 GC 沒能成功超度物理孤立碎塊。
+
+### 🔍 原因分析
+1. 在舊版 VFS 業務底部實作的 GC 中，程式碼撰寫了非同步協程 `async def check_temp_dir_exists()`。
+2. 但在呼叫時，將該協程函式傳給了執行緒池管理器：
+   `await anyio.to_thread.run_sync(check_temp_dir_exists)`
+3. **AnyIO 機制**：`run_sync` 專門用於將「同步阻塞函數（如 `os.path.exists`）」移交給背景執行緒池以防卡死 Event Loop。當傳入 `async def` 宣告的非同步函式時，背景執行緒直接執行該物件只會直接產生一個 `<coroutine>` 協程物件，而**不會去 `await` 它**。
+4. 這導致協程內部的實體 `os.path.exists` 從未被真正調用。更致命的是，該協程物件在 Python 的 Boolean 條件判定中永遠為 `True`，導致 `temp_dir_exists` 判定恆為真，且底下的 `list_physical_dirs` 也跟著在未被 await 的協程中靜默打轉，GC 實體大掃除形同虛設。
+
+### 🛠️ 解決方案
+在 `app/gc/sentinel.py` 中，徹底廢除巢狀的 `async def` 輔助函數。將 Python 內建原生同步的 `os.path.exists` 直接傳入 `run_sync` 的第一個參數，並將輔助函數改為純同步形式傳入：
+```python
+# 🟢 同步輔助函數
+def list_physical_dirs(path: str) -> list:
+    return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+
+# 🟢 安全調用：傳入同步 os.path.exists 於第一個參數，引數作為第二個參數
+temp_dir_exists = await anyio.to_thread.run_sync(os.path.exists, temp_dir)
+if temp_dir_exists:
+    physical_dirs = await anyio.to_thread.run_sync(list_physical_dirs, temp_dir)
+```
+
+### 🛡️ 預防方式
+1. **嚴守 sync / async 邊界**：`anyio.to_thread.run_sync(func, *args)` 的第一個參數 `func` **必須且只能** 是常規的同步阻塞函式（如內建的 `os.*` 或 `shutil.*`），絕對不能傳入帶有 `async def` 的非同步協程函式。
+2. **Event Loop 原生非同步**：我們自己寫的非同步業務（`async def` 宣告）應在主執行緒中直接使用 `await` 調用，無需丟入 thread pool。
+
+---
+
+## 5. 2026-05-18: 資料庫 Session 工廠名稱導入錯誤導致 Uvicorn 啟動崩潰 (ImportError)
+
+### 📌 問題現象
+* **狀況**：將 GC 排程移出並獨立為 `app/gc/sentinel.py` 重啟 Docker 伺服器後，容器不斷崩潰重啟，日誌丟出錯誤：
+  ```text
+  ImportError: cannot import name 'async_session_maker' from 'app.database' (/app/app/database.py)
+  ```
+
+### 🔍 原因分析
+1. 在獨立重構 `sentinel.py` 時，憑空推測了資料庫會話工廠的名稱為 `async_session_maker` 並進行導入。
+2. 然而，在 `app/database.py` 中，實際定義的非同步會話工廠名稱是 `AsyncSessionLocal = sessionmaker(...)`。
+3. 由於未能先檢視實體檔案代碼就進行編寫，導致了命名不一致的靜態導入錯誤。
+
+### 🛠️ 解決方案
+檢視 `app/database.py` 的實體宣告，在 `app/gc/sentinel.py` 中將導入源與實例化名稱同步修正：
+```python
+# 修正後 (已修復)
+from app.database import AsyncSessionLocal
+
+# 實例化資料庫連接會話
+async with AsyncSessionLocal() as db:
+    res = await run_expired_uploads_gc(db)
+```
+
+### 🛡️ 預防方式
+1. **落實「禁止推測」原則**：對於任何外部導入、未讀過的變數或資料庫 Session 工廠宣告，在撰寫代碼前**必須實打實地讀取實體宣告檔案**，嚴禁憑空猜想。
+2. **靜態語法診斷**：在重啟或部署前，可在本地使用 IDE 或 `ruff check .` 進行語法拼字與導入檢驗，提早捕捉 ImportError。
+
