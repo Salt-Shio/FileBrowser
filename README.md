@@ -139,12 +139,23 @@ graph TD
     - [ ] **主動取消 API**：提供 `POST /vfs/upload/cancel`，允許前端主動發起取消以即時清理會話紀錄與暫存碎片檔案。
     - [ ] **定時背景哨兵 (GC)**：於服務啟動時掛載背景協程，定時物理清除資料庫中過期（>24小時）的活躍會話，並清除對應的磁碟暫存。
 
-### Phase 5: 輔助系統與處理 (功能增強)
+### Phase 5: 系統完善與管理 (Admin & Polish)
+- [ ] **Step 5.1: 自助安全管理 (2FA 綁定與註冊流程)**：
+    * **現存問題分析**：目前 `/login` 端點無條件回傳 `require_2fa: true`，且在 `/verify-2fa` 中直接利用 `otp.verify_otp_code` 校驗尚未產生的 2FA 安全金鑰（新使用者初始為 `None`），這將導致未啟用 2FA 的新註冊使用者根本無法登入。同時系統中也缺乏註冊與綁定 2FA 的 API。
+    * **預期業務流程**：使用者註冊 $\rightarrow$ 登入（此時未啟用 2FA，免輸入 OTP 驗證碼） $\rightarrow$ 進入控制台 $\rightarrow$ 請求產生 2FA 金鑰與 QR Code $\rightarrow$ 輸入手機 OTP 首次驗證 $\rightarrow$ 正式啟用 2FA 保護。
+    * **具體待辦步驟**：
+      - [ ] **1. 使用者註冊端點**：新增 `POST /api/auth/register` API，新註冊使用者之 `is_totp_enabled` 預設為 `False`，`totp_secret` 為 `None`。
+      - [ ] **2. 登入邏輯重構**：重構 `POST /api/auth/login` 的驗證邏輯。若使用者 `is_totp_enabled` 為 `False`，直接簽發正式的 JWT `access_token`；若為 `True`，才簽發短效 `two_fa_token` 並回傳 `require_2fa: true`。
+      - [ ] **3. 2FA 兩階段綁定端點**：
+        - [ ] 新增 `POST /api/auth/2fa/generate`：產生隨機 Base32 金鑰並暫存於資料庫（此時 `is_totp_enabled` 仍保持 `False`，避免掃碼前被鎖定），回傳金鑰與 QR Code 連結。
+        - [ ] 新增 `POST /api/auth/2fa/enable`：驗證使用者輸入的手機 App OTP 驗證碼，成功後更新 `is_totp_enabled` 為 `True`。
+      - [ ] **4. 2FA 停用端點**：新增 `POST /api/auth/2fa/disable`，校驗當前 OTP 驗證碼後將 `is_totp_enabled` 設為 `False` 並清除安全金鑰。
+      - [ ] **5. Schema 與測試腳本更新**：修改 `LoginResponse` 結構以支援直接回傳 `access_token` 與 `token_type`；更新 `test_api.py` 測試腳本，支援非強制 2FA 情況下的登入與綁定流程測試。
+- [ ] **待定**: 根據實測反饋決定後續系統優化項目。
+
+### Phase 6: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
 
-### Phase 6: 系統完善與管理 (Admin & Polish)
-- [ ] **Step 6.1: 自助安全管理**: 實作使用者 2FA 綁定流程與密碼修改功能。
-- [ ] **待定**: 根據實測反饋決定後續系統優化項目。
 
 ## 技術棧
 - **Backend**: FastAPI (Python)
