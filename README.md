@@ -24,6 +24,7 @@ graph TD
     subgraph Layer_2 [2. 具體功能端點]
         direction LR
         subgraph Auth_Endpoints [認證管理]
+            EP_Register[註冊帳號]
             EP_Login[登入介面]
             EP_2FA[2FA 驗證]
         end
@@ -40,7 +41,7 @@ graph TD
     Router --> Auth_Endpoints
     Router --> File_Endpoints
 
-    %% 第三層：核心業務引擎 (Engines)
+    %% 第三層：核心業務引擎 (Engines) & 背景維護
     subgraph Layer_3_Auth [3. 認證與權限引擎]
         Auth_Core[驗證核心: TOTP / Argon2]
         Session_Mgr[會話管理器: JWT 簽發]
@@ -56,6 +57,10 @@ graph TD
         Chunk_Mgr -- 合併完成 --> VFS_Engine
     end
 
+    subgraph Layer_3_GC [背景維護核心]
+        GC_Sentinel[背景 GC 哨兵: 定期大掃除]
+    end
+
     %% 第四層：數據持久化
     subgraph Layer_4 [5. 數據持久層]
         DB[(SQLite: Metadata / 使用者)]
@@ -63,6 +68,7 @@ graph TD
     end
 
     %% 跨層對接邏輯
+    EP_Register --> Auth_Core
     EP_Login --> Auth_Core
     EP_2FA --> Auth_Core
     
@@ -73,6 +79,11 @@ graph TD
     EP_Modify --> VFS_Engine
     EP_Mkdir --> VFS_Engine
     EP_Delete --> VFS_Engine
+
+    %% 背景 GC 哨兵運作關聯
+    GC_Sentinel -. 取消與清理 .-> VFS_Engine
+    GC_Sentinel --> DB
+    GC_Sentinel --> Disk
 
     %% 底層持久化
     Auth_Core --> DB

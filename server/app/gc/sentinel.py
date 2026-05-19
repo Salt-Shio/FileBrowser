@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.config import settings
-from app.models import UploadSession
+from app.models import UploadSession, Folder, File
 from app.database import AsyncSessionLocal
 from app.services.vfs_service import VFSService
 from app import filesystem
@@ -133,11 +133,56 @@ async def run_expired_uploads_gc(db: AsyncSession) -> dict:
         logger.error(f"[GC] {err_msg}")
         errors.append(err_msg)
 
+    # --- 階段三：物理清理過期的邏輯刪除項目 (Files & Folders) ---
+    deleted_files_count = 0
+    deleted_folders_count = 0
+    try:
+        # 1. 盤點過期的邏輯刪除檔案
+        stmt_files = select(File).where(File.is_deleted == True, File.deleted_at < expire_threshold)
+        result_files = await db.execute(stmt_files)
+        expired_files = result_files.scalars().all()
 
-    logger.info(f"[GC] 垃圾回收大掃除完成！共清除 DB 會話: {db_cleaned_count} 個，磁碟孤立目錄: {physical_cleaned_count} 個")
+        if expired_files:
+            logger.warning(f"[GC] 偵測到 {len(expired_files)} 個已過期之邏輯刪除檔案，即將進行物理與 DB 清理...")
+            for file_obj in expired_files:
+                try:
+                    await filesystem.delete_file(file_obj.storage_path)
+                    await db.delete(file_obj)
+                    deleted_files_count += 1
+                except Exception as err:
+                    err_msg = f"物理清理刪除檔案 {file_obj.id} 失敗: {err}"
+                    logger.error(f"[GC] {err_msg}")
+                    errors.append(err_msg)
+
+        # 2. 盤點過期的邏輯刪除目錄
+        stmt_folders = select(Folder).where(Folder.is_deleted == True, Folder.deleted_at < expire_threshold)
+        result_folders = await db.execute(stmt_folders)
+        expired_folders = result_folders.scalars().all()
+
+        if expired_folders:
+            logger.warning(f"[GC] 偵測到 {len(expired_folders)} 個已過期之邏輯刪除目錄，即將進行 DB 清理...")
+            for folder_obj in expired_folders:
+                try:
+                    await db.delete(folder_obj)
+                    deleted_folders_count += 1
+                except Exception as err:
+                    err_msg = f"清理刪除目錄 {folder_obj.id} 失敗: {err}"
+                    logger.error(f"[GC] {err_msg}")
+                    errors.append(err_msg)
+
+        if deleted_files_count > 0 or deleted_folders_count > 0:
+            await db.commit()
+    except Exception as e:
+        err_msg = f"邏輯刪除項目盤點與物理清理失敗: {e}"
+        logger.error(f"[GC] {err_msg}")
+        errors.append(err_msg)
+
+    logger.info(f"[GC] 垃圾回收大掃除完成！共清除 DB 會話: {db_cleaned_count} 個，磁碟孤立目錄: {physical_cleaned_count} 個，物理刪除檔案: {deleted_files_count} 個，刪除目錄: {deleted_folders_count} 個")
     return {
         "db_cleaned": db_cleaned_count,
         "physical_cleaned": physical_cleaned_count,
+        "deleted_files": deleted_files_count,
+        "deleted_folders": deleted_folders_count,
         "success": len(errors) == 0,
         "errors": errors
     }
