@@ -175,3 +175,14 @@ docker-compose up --build -d
 ### 2. Fail-Fast 原則
 - **偵測 (Detection)**：錯誤偵測應離「成因」與「實作地點」越近越好，以便於快速定位問題。
 - **處理 (Handling)**：錯誤處置應拉遠到高層決定，以保持系統整體的彈性與策略一致性。
+
+### 3. 垃圾回收 (GC) 的解耦與非同步執行緒設計
+**問題 1：AnyIO 執行緒池混用協程 Bug**
+- **狀況**：在舊版垃圾回收設計中，錯誤地將一個 `async def` 協程函式傳入了 `anyio.to_thread.run_sync()`。
+- **成因**：`run_sync` 本身是為了將「同步阻塞操作 (如本機磁碟 I/O)」移至背景執行緒池執行，以防止卡死 Event Loop。當傳入 `async def` 時，背景執行緒在沒有 Event Loop 調度的情況下直接呼叫它，只會瞬間得到一個 `<coroutine>` 物件，而根本不會執行其內部的實體硬碟檢查。該物件在 Python 的 Boolean 判定中永遠為 `True`，導致過期會話防護機制徹底失效。
+- **解法**：將原生同步的磁碟操作（例如內建的 `os.path.exists`）作為參數直接傳入 `run_sync` 第一個位置，使其在背景執行緒中安全執行；而我們自己寫的非同步業務（`async def`）則直接在主執行緒中用 `await` 呼叫。
+
+**問題 2：同級服務互相依賴 (Sibling Coupling) 與循環導入**
+- **狀況**：若將垃圾回收業務獨立為 `GCService` 放在 `services/` 資料夾中，因為它需要調用 `VFSService` 來取消上傳會話，這使得兩個同層級的 Service 產生了緊密耦合，在 Python 中極易引發 **循環導入 (Circular Import)**。
+- **解法**：將垃圾回收定位為與 API 同等地位的 **「入口驅動層 (Entry Layer)」**，並在 `app/gc/` 資料夾下建立獨立的 `sentinel.py` 模組。由 `gc/sentinel.py` 向下單向導入資料庫與 `VFSService` 並呼叫 `cancel_upload()`。如此實現了**嚴格的單向依賴 (Unidirectional Dependency)**，既重用了核心上傳取消邏輯，又讓 `vfs_service.py` 保持 100% 的純粹與職責單一。
+
