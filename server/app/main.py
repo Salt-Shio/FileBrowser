@@ -7,7 +7,9 @@
 """
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+import asyncio
 from app.database import init_db
+from app.gc.sentinel import run_gc_sentinel
 from app.middleware import RealIPMiddleware
 from app.api import api_router # 匯入總路由
 from starlette.middleware import Middleware
@@ -17,7 +19,21 @@ from app.core.exceptions import BaseBusinessException, business_exception_handle
 async def lifespan(app: FastAPI):
     # 啟動時：透過封裝好的函式初始化資料庫
     await init_db()
+    
+    # 啟動時：建立並拉起背景垃圾回收定時哨兵任務
+    gc_task = asyncio.create_task(run_gc_sentinel())
+    app.state.gc_task = gc_task
+    
     yield
+    
+    # 關閉時：優雅取消背景任務，防止資源與協程洩漏
+    if hasattr(app.state, "gc_task"):
+        app.state.gc_task.cancel()
+        try:
+            await app.state.gc_task
+        except asyncio.CancelledError:
+            pass
+
 
 app = FastAPI(
     title="File Explorer",
