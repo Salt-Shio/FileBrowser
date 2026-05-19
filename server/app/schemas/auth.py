@@ -15,6 +15,13 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class RegisterRequest(BaseModel):
+    """
+    註冊請求模型
+    """
+    username: str
+    password: str
+
 class Verify2FARequest(BaseModel):
     """
     2FA 驗證請求模型
@@ -29,4 +36,19 @@ class LoginResponse(BaseModel):
     message: str
     require_2fa: bool
     two_fa_token: Optional[str] = None
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
     username: str
+
+class Generate2FAResponse(BaseModel):
+    """
+    產生 2FA 金鑰回傳模型
+    """
+    secret: str
+    provisioning_uri: str
+
+class VerifyOTPRequest(BaseModel):
+    """
+    驗證 OTP 驗證碼請求模型
+    """
+    otp_code: str

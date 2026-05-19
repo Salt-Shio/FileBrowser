@@ -5,7 +5,7 @@
 2. 處理雙重驗證 (2FA 驗證)
 3. 簽發 JWT 通行證
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
@@ -18,6 +18,13 @@ from app import schemas
 router = APIRouter()
 
 # --- API 實作 ---
+
+@router.post("/register", response_model=schemas.user.UserResponse, status_code=status.HTTP_201_CREATED)
+async def register(data: schemas.auth.RegisterRequest, db: AsyncSession = Depends(deps.get_db)):
+    """
+    使用者註冊端點
+    """
+    return await AuthService.register(db, data.username, data.password)
 
 @router.post("/login", response_model=schemas.auth.LoginResponse)
 async def login(data: schemas.auth.LoginRequest, db: AsyncSession = Depends(deps.get_db)):
@@ -39,3 +46,36 @@ async def get_me(current_user: User = Depends(deps.get_current_user)):
     獲取當前登入使用者資訊 (展示 Schema 過濾密碼的功能)
     """
     return current_user
+
+@router.post("/2fa/generate", response_model=schemas.auth.Generate2FAResponse)
+async def generate_2fa(
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    產生 2FA 金鑰與二維碼
+    """
+    return await AuthService.generate_2fa_setup(db, current_user.username)
+
+@router.post("/2fa/enable")
+async def enable_2fa(
+    data: schemas.auth.VerifyOTPRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    驗證首次 2FA 碼並正式啟用 2FA 功能
+    """
+    return await AuthService.enable_2fa(db, current_user.username, data.otp_code)
+
+@router.post("/2fa/disable")
+async def disable_2fa(
+    data: schemas.auth.VerifyOTPRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    驗證當前 2FA 碼並正式停用 2FA 功能
+    """
+    return await AuthService.disable_2fa(db, current_user.username, data.otp_code)
+
