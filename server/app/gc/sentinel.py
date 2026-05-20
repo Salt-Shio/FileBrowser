@@ -2,180 +2,48 @@
 垃圾回收守護哨兵 (App GC Sentinel)
 職責：
 1. 作為與 API 平級的「入口驅動層 (Entry Layer)」，負責定時大掃除維護。
-2. 盤點資料庫中超時的活躍會話，並重用 VFSService.cancel_upload 釋放命名鎖定與磁碟分塊。
-3. 盤點實體暫存目錄 (/data/temp) 中與資料庫脫鉤的物理孤立目錄，徹底清除。
-4. 保持 strict 單向依賴流動 (gc/sentinel -> services/vfs_service -> filesystem)，避免循環引用。
+2. 定期調用 app.gc.core 各清理階段，保持背景任務的高效與安全。
+3. 保持 strict 單向依賴流動 (gc/sentinel -> gc/core -> database/filesystem)，無循環引用，不依賴 VFS 服務層。
 """
-import os
 import logging
 import anyio
 from datetime import datetime, timezone, timedelta
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from app.core.config import settings
-from app.models import UploadSession, Folder, File
 from app.database import AsyncSessionLocal
-from app.services.vfs_service import VFSService
-from app import filesystem
+from app.gc.core import (
+    gc_expired_sessions,
+    gc_orphaned_temp_dirs,
+    gc_expired_soft_deleted_nodes
+)
 
 logger = logging.getLogger("gc_sentinel")
-
-# -----------------------------------------------------------------------------
-# 模組最外層定義同步輔助函數，供 anyio.to_thread.run_sync 呼叫，提升效能
-# -----------------------------------------------------------------------------
-def list_physical_dirs(path: str) -> list:
-    try:
-        return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
-    except Exception as e:
-        logger.error(f"[GC Helper] 讀取目錄 {path} 失敗: {e}")
-        return []
-
-def get_dir_mtime(path: str) -> Optional[float]:
-    try:
-        return os.path.getmtime(path)
-    except Exception as e:
-        logger.error(f"[GC Helper] 讀取目錄修改時間 {path} 失敗: {e}")
-        return None
 
 # -----------------------------------------------------------------------------
 # 垃圾回收大掃除執行單元
 # -----------------------------------------------------------------------------
 async def run_expired_uploads_gc(db: AsyncSession) -> dict:
     """
-    執行垃圾回收大掃除 (優化扁平版：使用 Guard Clauses 降低巢狀縮排)
+    執行垃圾回收大掃除 (調度核心：調用分開的 GC 清理模組)
     """
     # 1. 計算時區安全的 Naive UTC 過期閾值
     now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     expire_threshold = now_naive_utc - timedelta(hours=settings.UPLOAD_SESSION_EXPIRE_HOURS)
     
-    db_cleaned_count = 0
-    physical_cleaned_count = 0
     errors = []
 
-    # --- 階段一：DB-driven 清理過期會話 ---
-    try:
-        stmt = select(UploadSession).where(UploadSession.created_at < expire_threshold)
-        result = await db.execute(stmt)
-        expired_sessions = result.scalars().all()
+    # --- 階段一：清理過期上傳會話 ---
+    db_cleaned_count, errs1 = await gc_expired_sessions(db, expire_threshold)
+    errors.extend(errs1)
 
-        # 🟢 Guard Clause: 若無任何過期會話，直接跳過
-        if not expired_sessions:
-            logger.info("[GC] 無任何過期資料庫會話紀錄，跳過 DB 清理。")
-        else:
-            logger.warning(f"[GC] 偵測到 {len(expired_sessions)} 個已過期上傳會話，即將進行清理...")
-            for session in expired_sessions:
-                try:
-                    # 🔄 呼叫 VFSService 業務，實現代碼 100% 重用！
-                    await VFSService.cancel_upload(db, upload_id=session.id, owner_id=session.owner_id)
-                    db_cleaned_count += 1
-                except Exception as err:
-                    err_msg = f"清理過期會話 {session.id} 失敗: {err}"
-                    logger.error(f"[GC] {err_msg}")
-                    errors.append(err_msg)
-    except Exception as e:
-        err_msg = f"過期會話資料庫查詢失敗: {e}"
-        logger.error(f"[GC] {err_msg}")
-        errors.append(err_msg)
-
-    # --- 階段二：Physical-driven 清理磁碟中的孤立暫存目錄 ---
-    try:
-        temp_dir = settings.TEMP_DIR
-        # 🟢 修正：傳入原生同步 os.path.exists，交由執行緒池執行
-        temp_dir_exists = await anyio.to_thread.run_sync(os.path.exists, temp_dir)
-
-        # 🟢 Guard Clause 1: 若暫存目錄不存在，直接跳過物理清理
-        if not temp_dir_exists:
-            logger.info("[GC] 暫存目錄不存在，跳過物理大掃除。")
-        else:
-            # 🟢 傳入同步輔助函數 list_physical_dirs 取得子目錄列表
-            temp_physical_dirs = await anyio.to_thread.run_sync(list_physical_dirs, temp_dir)
-
-            # 🟢 Guard Clause 2: 若實體目錄為空，直接跳過
-            if not temp_physical_dirs:
-                logger.info("[GC] 實體暫存目錄為空，跳過物理大掃除。")
-            else:
-                active_stmt = select(UploadSession.id)
-                active_result = await db.execute(active_stmt)
-                active_ids = set(active_result.scalars().all())
-
-                for tp_dir in temp_physical_dirs:
-                    # 🟢 Guard Clause 3: 如果實體目錄在資料庫有活躍會話紀錄，說明是正常上傳，跳過！
-                    if tp_dir in active_ids:
-                        continue
-
-                    p_path = os.path.join(temp_dir, tp_dir)
-                    # 🟢 傳入同步輔助函數 get_dir_mtime 取得修改時間
-                    mtime_stamp = await anyio.to_thread.run_sync(get_dir_mtime, p_path)
-                    
-                    # 🟢 Guard Clause 4: 若獲取修改時間失敗，可能目錄被佔用或不存在，跳過！
-                    if not mtime_stamp:
-                        continue
-
-                    mtime = datetime.fromtimestamp(mtime_stamp, timezone.utc).replace(tzinfo=None)
-                    
-                    # 🟢 Guard Clause 5: 若該物理目錄最後修改時間在 24 小時內，說明是近期上傳，跳過！
-                    if mtime >= expire_threshold:
-                        continue
-
-                    # 🌟 真正執行物理大掃除 (縮排大幅減至 4 層以內)
-                    logger.warning(f"[GC] 偵測到物理孤立暫存目錄 {tp_dir} 且已超時，即將物理清除...")
-                    try:
-                        await filesystem.cleanup_temp(tp_dir)
-                        physical_cleaned_count += 1
-                    except Exception as err:
-                        err_msg = f"物理清理孤立目錄 {tp_dir} 失敗: {err}"
-                        logger.error(f"[GC] {err_msg}")
-                        errors.append(err_msg)
-    except Exception as e:
-        err_msg = f"物理孤立暫存盤點失敗: {e}"
-        logger.error(f"[GC] {err_msg}")
-        errors.append(err_msg)
+    # --- 階段二：清理磁碟中的孤立暫存目錄 ---
+    physical_cleaned_count, errs2 = await gc_orphaned_temp_dirs(db, expire_threshold)
+    errors.extend(errs2)
 
     # --- 階段三：物理清理過期的邏輯刪除項目 (Files & Folders) ---
-    deleted_files_count = 0
-    deleted_folders_count = 0
-    try:
-        # 1. 盤點過期的邏輯刪除檔案
-        stmt_files = select(File).where(File.is_deleted == True, File.deleted_at < expire_threshold)
-        result_files = await db.execute(stmt_files)
-        expired_files = result_files.scalars().all()
-
-        if expired_files:
-            logger.warning(f"[GC] 偵測到 {len(expired_files)} 個已過期之邏輯刪除檔案，即將進行物理與 DB 清理...")
-            for file_obj in expired_files:
-                try:
-                    await filesystem.delete_file(file_obj.storage_path)
-                    await db.delete(file_obj)
-                    deleted_files_count += 1
-                except Exception as err:
-                    err_msg = f"物理清理刪除檔案 {file_obj.id} 失敗: {err}"
-                    logger.error(f"[GC] {err_msg}")
-                    errors.append(err_msg)
-
-        # 2. 盤點過期的邏輯刪除目錄
-        stmt_folders = select(Folder).where(Folder.is_deleted == True, Folder.deleted_at < expire_threshold)
-        result_folders = await db.execute(stmt_folders)
-        expired_folders = result_folders.scalars().all()
-
-        if expired_folders:
-            logger.warning(f"[GC] 偵測到 {len(expired_folders)} 個已過期之邏輯刪除目錄，即將進行 DB 清理...")
-            for folder_obj in expired_folders:
-                try:
-                    await db.delete(folder_obj)
-                    deleted_folders_count += 1
-                except Exception as err:
-                    err_msg = f"清理刪除目錄 {folder_obj.id} 失敗: {err}"
-                    logger.error(f"[GC] {err_msg}")
-                    errors.append(err_msg)
-
-        if deleted_files_count > 0 or deleted_folders_count > 0:
-            await db.commit()
-    except Exception as e:
-        err_msg = f"邏輯刪除項目盤點與物理清理失敗: {e}"
-        logger.error(f"[GC] {err_msg}")
-        errors.append(err_msg)
+    deleted_files_count, deleted_folders_count, errs3 = await gc_expired_soft_deleted_nodes(db, expire_threshold)
+    errors.extend(errs3)
 
     logger.info(f"[GC] 垃圾回收大掃除完成！共清除 DB 會話: {db_cleaned_count} 個，磁碟孤立目錄: {physical_cleaned_count} 個，物理刪除檔案: {deleted_files_count} 個，刪除目錄: {deleted_folders_count} 個")
     return {
