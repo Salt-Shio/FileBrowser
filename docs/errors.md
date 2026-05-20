@@ -188,5 +188,30 @@ async with AsyncSessionLocal() as db:
 4. 最終調用 `db.commit()` 送交資料庫交易。
 
 ### 🛡️ 預防方式
-1. **軟刪除的生命週期閉環**：在使用「邏輯/軟刪除」設計模式時，必須同步設計與其配套的生命週期終點（Pruning/Purging）。應隨時審視：當資料不再被使用後，其實體資源（磁碟檔案、快取、關聯資料）是否能在生命週期結束時被自動安全回收。
+1. **軟刪除的生命週期閉環**：在使用「邏輯/軟刪除」設計模式時，必須同步設計與與其配套的生命週期終點（Pruning/Purging）。應隨時審視：當資料不再被使用後，其實體資源（磁碟檔案、快取、關聯資料）是否能在生命週期結束時被自動安全回收。
 
+---
+
+## 8. 2026-05-19: GC 哨兵重構解耦時漏導 AsyncSessionLocal 導致背景守護協程拋出 NameError
+
+### 📌 問題現象
+* **狀況**：將 GC 哨兵重構解耦並修改 `sentinel.py` 後，背景 GC 哨兵執行時拋出異常：
+  ```text
+  [GC] 哨兵循環發生非預期異常: name 'AsyncSessionLocal' is not defined
+  ```
+  導致背景哨兵循環一直因異常重試。
+
+### 🔍 原因分析
+1. 在對 `sentinel.py` 進行重構解耦時，為了清除不再使用的 `VFSService` 依賴，大幅清理了頂部的 `import` 區域。
+2. 由於疏忽，將 `run_gc_sentinel`背景協程中用來建立非同步會話的 `AsyncSessionLocal` 導入宣告一併刪除。
+3. 導致其在調用 `async with AsyncSessionLocal() as db:` 時拋出 `NameError`。
+
+### 🛠️ 解決方案
+在 `server/app/gc/sentinel.py` 頂部導入區，重新導入該物件：
+```python
+from app.database import AsyncSessionLocal
+```
+
+### 🛡️ 預防方式
+1. **導入清理需落實全局比對**：清理未使用的導入時，應在檔案內執行全局搜尋（`Ctrl + F`）確認該變數名稱在代碼內已完全無人使用。
+2. **靜態語法檢查**：在本地開發或重啟伺服器前，執行靜態檢查（如 `ruff` 或編輯器內建的 Linter）以偵測 `F821 (Undefined name)` 錯誤，確保代碼執行時語法結構的完整性。
