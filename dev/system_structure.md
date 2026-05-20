@@ -62,8 +62,7 @@ graph TD
     DEPS --> JWT
     DEPS --> MODELS
 
-    %% 背景 GC 哨兵調用 (單向依賴，無循環引用)
-    GC_SENTINEL --> VFS_SVC
+    %% 背景 GC 哨兵調用
     GC_SENTINEL --> DB
 
     %% Schema 調用
