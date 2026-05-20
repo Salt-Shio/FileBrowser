@@ -81,7 +81,6 @@ graph TD
     EP_Delete --> VFS_Engine
 
     %% 背景 GC 哨兵運作關聯
-    GC_Sentinel -. 取消與清理 .-> VFS_Engine
     GC_Sentinel --> DB
     GC_Sentinel --> Disk
 
