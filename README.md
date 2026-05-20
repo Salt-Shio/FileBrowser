@@ -150,18 +150,27 @@ graph TD
     - [x] **定時背景哨兵 (GC)**：於服務啟動時掛載背景協程，定時物理清除資料庫中過期（>24小時）的活躍會話，並清除對應的磁碟暫存。
 
 ### Phase 5: 系統完善與管理 (Admin & Polish)
-- [ ] **Step 5.1: 自助安全管理 (2FA 綁定與註冊流程)**：
-    * **現存問題分析**：目前 `/login` 端點無條件回傳 `require_2fa: true`，且在 `/verify-2fa` 中直接利用 `otp.verify_otp_code` 校驗尚未產生的 2FA 安全金鑰（新使用者初始為 `None`），這將導致未啟用 2FA 的新註冊使用者根本無法登入。同時系統中也缺乏註冊與綁定 2FA 的 API。
-    * **預期業務流程**：使用者註冊 $\rightarrow$ 登入（此時未啟用 2FA，免輸入 OTP 驗證碼） $\rightarrow$ 進入控制台 $\rightarrow$ 請求產生 2FA 金鑰與 QR Code $\rightarrow$ 輸入手機 OTP 首次驗證 $\rightarrow$ 正式啟用 2FA 保護。
-    * **具體待辦步驟**：
-      - [ ] **1. 使用者註冊端點**：新增 `POST /api/auth/register` API，新註冊使用者之 `is_totp_enabled` 預設為 `False`，`totp_secret` 為 `None`。
-      - [ ] **2. 登入邏輯重構**：重構 `POST /api/auth/login` 的驗證邏輯。若使用者 `is_totp_enabled` 為 `False`，直接簽發正式的 JWT `access_token`；若為 `True`，才簽發短效 `two_fa_token` 並回傳 `require_2fa: true`。
-      - [ ] **3. 2FA 兩階段綁定端點**：
-        - [ ] 新增 `POST /api/auth/2fa/generate`：產生隨機 Base32 金鑰並暫存於資料庫（此時 `is_totp_enabled` 仍保持 `False`，避免掃碼前被鎖定），回傳金鑰與 QR Code 連結。
-        - [ ] 新增 `POST /api/auth/2fa/enable`：驗證使用者輸入的手機 App OTP 驗證碼，成功後更新 `is_totp_enabled` 為 `True`。
-      - [ ] **4. 2FA 停用端點**：新增 `POST /api/auth/2fa/disable`，校驗當前 OTP 驗證碼後將 `is_totp_enabled` 設為 `False` 並清除安全金鑰。
-      - [ ] **5. Schema 與測試腳本更新**：修改 `LoginResponse` 結構以支援直接回傳 `access_token` 與 `token_type`；更新 `test_api.py` 測試腳本，支援非強制 2FA 情況下的登入與綁定流程測試。
-- [ ] **待定**: 根據實測反饋決定後續系統優化項目。
+- [x] **Step 5.1: 自助安全管理 (2FA 綁定與註冊流程 - 後端 API)** [已完成 100%]
+    * **解決問題**：重構 `/login` 機制支援免 2FA 初始登入；新增註冊端點 `/register`；實作 2FA 兩階段綁定流程（產生與驗證啟用）與停用 API，並更新測試腳本以全面覆蓋。
+    * **具體完成步驟**：
+      - [x] **1. 使用者註冊端點**：新增 `POST /api/auth/register` API，新註冊使用者之 `is_totp_enabled` 預設為 `False`，`totp_secret` 為 `None`。
+      - [x] **2. 登入邏輯重構**：重構 `POST /api/auth/login` 的驗證邏輯。若使用者 `is_totp_enabled` 為 `False`，直接簽發正式的 JWT `access_token`；若為 `True`，才簽發短效 `two_fa_token` 並回傳 `require_2fa: true`。
+      - [x] **3. 2FA 兩階段綁定端點**：
+        - [x] 新增 `POST /api/auth/2fa/generate`：產生隨機 Base32 金鑰並暫存於資料庫（此時 `is_totp_enabled` 仍保持 `False`，避免掃碼前被鎖定），回傳金鑰與 QR Code 連結。
+        - [x] 新增 `POST /api/auth/2fa/enable`：驗證使用者輸入的手機 App OTP 驗證碼，成功後更新 `is_totp_enabled` 為 `True`。
+      - [x] **4. 2FA 停用端點**：新增 `POST /api/auth/2fa/disable`，校驗當前 OTP 驗證碼後將 `is_totp_enabled` 設為 `False` 並清除安全金鑰。
+      - [x] **5. Schema 與測試腳本更新**：修改 `LoginResponse` 結構以支援直接回傳 `access_token` 與 `token_type`；更新 `test_api.py` 測試腳本，支援非強制 2FA 情況下的登入與綁定流程測試。
+
+- [ ] **Step 5.2: 前端控制台與安全管理介面 (VFS & Auth UI - Vue 3 + Tailwind CSS)**：
+    * **1. 認證流 UI**：
+      - [ ] 註冊與登入頁面設計（包含 2FA 兩階段跳轉驗證）。
+      - [ ] 個人中心 2FA 產生、首次掃描 QR Code 綁定與停用安全鎖介面。
+    * **2. 虛擬檔案總管 (VFS) 互動 UI**：
+      - [ ] 目錄與檔案層級瀏覽介面（麵包屑導航、建立資料夾、重新命名、移動）。
+      - [ ] 邏輯刪除（軟刪除）至回收站以及還原/徹底刪除管理介面。
+    * **3. 傳輸管理 UI**：
+      - [ ] 斷點續傳分塊上傳管理面板與上傳進度條。
+      - [ ] 支援取消上傳並即時清理。
 
 ### Phase 6: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
