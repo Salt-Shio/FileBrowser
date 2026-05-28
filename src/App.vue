@@ -37,10 +37,6 @@ const logout = () => {
           >
             登入
           </router-link>
-          <!-- 臨時切換按鈕用於測試骨架 -->
-          <button @click="isLoggedIn = true" class="text-xs opacity-20 hover:opacity-100 border border-mono-700 px-2 rounded">
-            (模擬登入)
-          </button>
         </template>
 
         <!-- 已登入狀態 -->
