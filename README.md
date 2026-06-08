@@ -175,6 +175,9 @@ graph TD
 ### Phase 6: 輔助系統與處理 (功能增強)
 - [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
 
+### Phase 7: 系統部分強化
+
+- [ ] **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，問題是沒有嚴格限制不能重放，這有利爆破。
 
 ## 技術棧
 - **Backend**: FastAPI (Python)
