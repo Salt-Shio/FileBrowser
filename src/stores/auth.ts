@@ -1,20 +1,86 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { authApi } from '@/api/auth';
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref(null);
-  const token = ref(localStorage.getItem('token') || '');
+  const user = ref<any>(null);
+  const token = ref<string>(localStorage.getItem('token') || '');
+  const twoFaToken = ref<string>('');
+  const username = ref<string>('');
+
+  const isLoggedIn = computed(() => !!token.value);
 
   async function register(payload: any) {
     const response = await authApi.register(payload);
-    // Note: register in the backend returns UserResponse (User object)
     return response.data;
+  }
+
+  async function login(payload: any) {
+    const response = await authApi.login(payload);
+    const data = response.data;
+    
+    if (data.require_2fa) {
+      twoFaToken.value = data.two_fa_token || '';
+      username.value = data.username || '';
+      return { require2FA: true };
+    } else {
+      token.value = data.access_token || '';
+      localStorage.setItem('token', token.value);
+      username.value = data.username || '';
+      await fetchUserProfile();
+      return { require2FA: false };
+    }
+  }
+
+  async function verify2FA(otpCode: string) {
+    if (!twoFaToken.value) {
+      throw new Error('2FA 驗證流程未初始化，請重新登入');
+    }
+    const response = await authApi.verify2FA({
+      two_fa_token: twoFaToken.value,
+      otp_code: otpCode
+    });
+    const data = response.data;
+    token.value = data.access_token || '';
+    localStorage.setItem('token', token.value);
+    twoFaToken.value = '';
+    await fetchUserProfile();
+  }
+
+  async function fetchUserProfile() {
+    if (!token.value) return;
+    try {
+      const response = await authApi.getMe();
+      user.value = response.data;
+    } catch (error) {
+      logout();
+      throw error;
+    }
+  }
+
+  function logout() {
+    user.value = null;
+    token.value = '';
+    twoFaToken.value = '';
+    username.value = '';
+    localStorage.removeItem('token');
+  }
+
+  // Automatically fetch profile if token exists on load
+  if (token.value && !user.value) {
+    fetchUserProfile().catch(() => {});
   }
 
   return {
     user,
     token,
-    register
+    twoFaToken,
+    username,
+    isLoggedIn,
+    register,
+    login,
+    verify2FA,
+    fetchUserProfile,
+    logout
   };
 });
