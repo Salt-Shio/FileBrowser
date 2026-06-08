@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -29,6 +30,24 @@ const router = createRouter({
       component: () => import('@/views/FileExplorerView.vue')
     }
   ]
+})
+
+router.beforeEach(async (to, from, next) => {
+  const authStore = useAuthStore()
+  
+  // Public pages that do not require authentication
+  const publicPages = ['/login', '/register', '/']
+  const authRequired = !publicPages.includes(to.path)
+  
+  if (authRequired && !authStore.isLoggedIn) {
+    return next('/login')
+  }
+  
+  if (authStore.isLoggedIn && (to.path === '/login' || to.path === '/register')) {
+    return next('/explore')
+  }
+  
+  next()
 })
 
 export default router
