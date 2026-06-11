@@ -8,6 +8,10 @@ const props = withDefaults(defineProps<BaseButtonProps>(), {
   loading: false,
 });
 
+const emit = defineEmits<{
+  (e: 'click', event: MouseEvent): void
+}>();
+
 const variantClasses = computed(() => {
   switch (props.variant) {
     case 'primary':
@@ -29,6 +33,7 @@ const variantClasses = computed(() => {
 <template>
   <button
     :disabled="disabled || loading"
+    @click="emit('click', $event)"
     :class="[
       'flex items-center justify-center px-6 py-3 rounded-[20px] transition-all duration-200',
       variantClasses,

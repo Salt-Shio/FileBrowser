@@ -4,29 +4,29 @@
     <div class="flex flex-col items-center justify-center mt-12 mb-20 w-full px-4">
       <div class="flex flex-col gap-10 w-full max-w-4xl items-center">
         <!-- Settings Form -->
-        <div class="flex flex-col md:flex-row w-full gap-2 md:gap-0">
+        <div class="flex flex-col md:flex-row w-full gap-4 md:gap-[18px] justify-center">
           <!-- Labels -->
-          <div class="flex flex-col gap-4 md:w-1/3 shrink-0">
-            <div class="bg-[#adadad] border-4 border-black flex items-center justify-center p-3 md:rounded-l-[15px] md:rounded-r-none rounded-[15px] h-[62px]">
+          <div class="flex flex-col gap-4 md:w-[195px] shrink-0">
+            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
               <p class="font-medium text-[#474747] text-2xl text-center">使用者名稱</p>
             </div>
-            <div class="bg-[#adadad] border-4 border-black flex items-center justify-center p-3 md:rounded-l-[15px] md:rounded-r-none rounded-[15px] h-[62px]">
+            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
               <p class="font-medium text-[#474747] text-2xl text-center">更改密碼</p>
             </div>
-            <div class="bg-[#adadad] border-4 border-black flex items-center justify-center p-3 md:rounded-l-[15px] md:rounded-r-none rounded-[15px] h-[62px]">
+            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
               <p class="font-medium text-[#474747] text-2xl text-center">確認密碼</p>
             </div>
           </div>
           
           <!-- Inputs -->
-          <div class="flex flex-col gap-4 md:w-2/3 flex-grow">
-            <div class="bg-white border-4 border-[#504c4c] flex items-center px-4 md:rounded-r-[15px] md:rounded-l-none rounded-[15px] h-[62px]">
+          <div class="flex flex-col gap-4 md:w-[541px] flex-grow">
+            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
               <input type="text" :value="authStore.user?.username" disabled class="w-full h-full outline-none font-medium text-xl text-[#adadad] bg-transparent" placeholder="請輸入新使用者名稱" />
             </div>
-            <div class="bg-white border-4 border-[#504c4c] flex items-center px-4 md:rounded-r-[15px] md:rounded-l-none rounded-[15px] h-[62px]">
+            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
               <input type="password" v-model="newPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請輸入新密碼" />
             </div>
-            <div class="bg-white border-4 border-[#504c4c] flex items-center px-4 md:rounded-r-[15px] md:rounded-l-none rounded-[15px] h-[62px]">
+            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
               <input type="password" v-model="confirmPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請確認新密碼" />
             </div>
           </div>
