@@ -31,4 +31,13 @@ export const authApi = {
   getMe() {
     return api.get('/auth/me');
   },
+  generate2FA() {
+    return api.post('/auth/2fa/generate');
+  },
+  enable2FA(payload: { otp_code: string }) {
+    return api.post('/auth/2fa/enable', payload);
+  },
+  disable2FA(payload: { otp_code: string }) {
+    return api.post('/auth/2fa/disable', payload);
+  },
 };

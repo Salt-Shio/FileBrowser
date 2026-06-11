@@ -18,7 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(payload: any) {
     const response = await authApi.login(payload);
     const data = response.data;
-    
+
     if (data.require_2fa) {
       twoFaToken.value = data.two_fa_token || '';
       username.value = data.username || '';
@@ -58,6 +58,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function generate2FA() {
+    const response = await authApi.generate2FA();
+    return response.data; // { secret, provisioning_uri }
+  }
+
+  async function enable2FA(otpCode: string) {
+    const response = await authApi.enable2FA({ otp_code: otpCode });
+    // update user state
+    await fetchUserProfile();
+    return response.data;
+  }
+
+  async function disable2FA(otpCode: string) {
+    const response = await authApi.disable2FA({ otp_code: otpCode });
+    // update user state
+    await fetchUserProfile();
+    return response.data;
+  }
+
   function logout() {
     user.value = null;
     token.value = '';
@@ -68,7 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Automatically fetch profile if token exists on load
   if (token.value && !user.value) {
-    fetchUserProfile().catch(() => {});
+    fetchUserProfile().catch(() => { });
   }
 
   return {
@@ -80,6 +99,9 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     login,
     verify2FA,
+    generate2FA,
+    enable2FA,
+    disable2FA,
     fetchUserProfile,
     logout
   };
