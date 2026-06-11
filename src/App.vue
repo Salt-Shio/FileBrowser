@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
-// 模擬登入狀態
-const isLoggedIn = ref(false)
 const router = useRouter()
+const authStore = useAuthStore()
+
+// 使用 Pinia store 的真實登入狀態
+const isLoggedIn = computed(() => authStore.isLoggedIn)
 
 const logout = () => {
-  isLoggedIn.value = false
+  authStore.logout()
   router.push('/')
 }
 </script>
