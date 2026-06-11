@@ -23,7 +23,7 @@
 
 ---
 
-## Phase 5.4: VFS 第 1 階段 - 基礎佈局與唯讀瀏覽 [當前核心任務]
+## Phase 5.4: VFS 第 1 階段 - 基礎佈局與唯讀瀏覽 [已完成 100%]
 - [x] 1. 新增前端 VFS API 請求封裝 [vfs.ts](file:///c:/Users/salt/Desktop/Project/FileBrowser/src/api/vfs.ts)，封裝 `/ls` 唯讀端點。
 - [x] 2. 新增 Pinia [vfs.ts](file:///c:/Users/salt/Desktop/Project/FileBrowser/src/stores/vfs.ts) 管理當前目錄內容與麵包屑結構。
 - [x] 3. 實作 [FileExplorerView.vue](file:///c:/Users/salt/Desktop/Project/FileBrowser/src/views/FileExplorerView.vue) 的雙欄介面：
@@ -31,19 +31,19 @@
   - [x] 右側詳細項目列表，帶有檔案名稱、時間與實線黑框邊線 (`border-2 border-black`)。
   - [x] 支援當前路徑 `root > Folder1` 標題顯示。
   - [x] 實作點擊子目錄進入下一層、點擊麵包屑回溯之導航邏輯。
-- [ ] 4. VFS 導航優化：在非根目錄的右側清單頂部，加入「`..`」去上層的列項目，點擊能返回父目錄。
+- [x] 4. VFS 導航優化：在非根目錄的右側清單頂部，加入「`..`」去上層的列項目，點擊能返回父目錄。
 
 ---
 
-## Phase 5.5: VFS 第 2 階段 - 虛擬目錄異動管理 [待執行]
-- [ ] 1. 前端 API 與 Pinia 擴充 `/mkdir`、`/rename`、`/move`、`/delete`。
-- [ ] 2. 實作「新建資料夾」按鈕與輸入彈窗。
-- [ ] 3. 實作項目 Hover 操作：顯示「重命名」、「移動」與「刪除」圖示，並串接對應 API 與更新重載邏輯。
+## Phase 5.5: VFS 第 2 階段 - 虛擬目錄異動管理 [已完成 100%]
+- [x] 1. 前端 API 與 Pinia 擴充 `/mkdir`、`/rename`、`/move`、`/delete`。
+- [x] 2. 實作「新建資料夾」按鈕與輸入彈窗。
+- [x] 3. 實作項目 Hover 操作：顯示「重命名」、「移動」與「刪除」圖示，並串接對應 API 與更新重載邏輯。
 
 ---
 
-## Phase 5.6: VFS 第 3 階段 - 實體傳輸與分塊上傳 [待執行]
-- [ ] 1. 實作檔案下載功能，觸發 `/api/vfs/download/{file_id}`。
+## Phase 5.6: VFS 第 3 階段 - 實體傳輸與分塊上傳 [當前核心任務 🎯]
+- [ ] 1. 實作檔案下載功能，點擊下載按鈕時觸發 `/api/vfs/download/{file_id}`。
 - [ ] 2. 實作大檔案前端切片，串接分塊上傳三階段工作流 (`/upload/init`, `/upload/chunk`, `/upload/finalize`)。
-- [ ] 3. 串接 `/upload/status/{upload_id}` 進行斷點續傳進度探測。
-- [ ] 4. 實作前台進度控制面板，展示所有上傳任務進度，支援「取消上傳」並調用 `/upload/cancel`。
+- [ ] 3. 串接 `/upload/status/{upload_id}` 進行斷點續傳進度探測，支援前端恢復上傳。
+- [ ] 4. 實作前端上傳進度控制面板，展示所有上傳任務，並支援「取消上傳」並調用 `/upload/cancel` API。
