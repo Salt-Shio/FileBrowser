@@ -1,51 +1,8 @@
-# File Explorer - 後續規劃待辦清單 (TODO)
+# Settings & 2FA 功能實作清單
 
-本文件紀錄了在 **Step 4.3: 檔案入籍工作流 (VFS Service Flow)** 實作完成後，系統的後續待辦任務與建議優化點。
-
----
-
-## 🛠️ 後續階段規劃
-
-### 1. Step 4.4: 串流下載與清理 (IO & Cleanup) [已完成 100%]
-* **高效下載管道**：已實作 `/vfs/download/{file_id}` 端點，利用 FastAPI 的 `FileResponse` 保障擁有者身分權限，並完整支援安全 ETag 快取校驗與 Range 斷點續傳。
-* **背景與主動碎片回收機制 (GC & Active Cancel)**：
-  - **定時背景哨兵 (GC)**：已實作獨立 `app/gc/sentinel.py` 包，定時盤點清理過期會話與物理孤立目錄，並安全掛載於 `main.py` lifespan 中。
-  - **主動取消 API**：已實作 `/vfs/upload/cancel`，前端可隨時主動釋放命名鎖定並物理清空碎片。
-  - **上傳進度探測 API**：已實作 `/vfs/upload/status/{upload_id}`，支援斷線重連差集續傳。
-  - **軟刪除項目物理清理**：已於 GC 哨兵中新增階段三，定期物理刪除已標記軟刪除且超過 24 小時的檔案及資料夾，釋放磁碟空間並清空資料庫過期記錄。
-
-### 1.1 背景哨兵 (GC) 的後續優化方向 [未來規劃]
-* **磁碟容量耗盡防禦聯動**：GC 哨兵在掃描時，若發現磁碟剩餘空間低於安全值（如 5%），可主動提升掃描頻率，或優先清理部分未滿 24 小時但進度停滯的會話。
-* **分散式鎖或進程互斥 (Locking)**：若未來採用多實例部署（如多容器負載均衡），應避免多個哨兵同時掃描同一塊資料庫，可引入 Redis 分散式鎖或資料庫行級鎖限制執行。
-* **測試清理工具 (`clean_sessions.py`) 功能增強**：優化本地清理工具，使其能夠精準比對與物理清除檔名為 UUID 格式、但資料庫 `name` 以 `test-gc-` 開頭的整合測試正式檔案，避免殘留孤立檔案。
-* **本地腳本與工具強制宣告 WAL 模式**：更新本地輔助工具（如 `clean_sessions.py` ），使其在與資料庫連線後顯式宣告 `PRAGMA journal_mode=WAL`，防範不同日誌模式造成的資料回滾衝突。
-
-### 2. Phase 5: 輔助系統與處理 (Media Processor)
-* **非同步媒體處理器**：
-  - 對於已上傳的圖片與影片，設計非同步工作流（Celery / BackgroundTasks）。
-  - 自動生成圖片縮圖 (Thumbnails) 並提取 EXIF 元數據，提升 VFS 瀏覽體驗。
-
-### 3. Phase 6: 系統完善與管理 (Admin & Polish)
-* **安全自帶綁定**：實作前端密碼修改與使用者 2FA (TOTP) 綁定流程，提供高度安全的個人管理後台。
-
----
-
-## 🔒 安全性與效能優化 (Security & Performance Optimizations)
-
-### 1. 磁碟容量耗盡防禦 (Disk Exhaustion Protection)
-* **背景**：惡意使用者如果透過 API 惡意建立大量 `UploadSession` 並重複寫入二進制碎片，可能導致伺服器磁碟空間耗盡 (DoS 攻擊)。
-* **優化建議**：
-  - 在 `init_upload()` 中，限制單一使用者同時擁有的活躍會話總數（例如最多 3 個活躍會話）。
-  - 在 `upload_chunk()` 寫入前，增加磁碟剩餘空間檢查，若空間低於安全值（如 5%）應停止寫入並拋出異常。
-  - 對單個檔案設定最大上限（如最大 5GB），防範極大檔案上傳。
-
-### 2. 重複合併防護 (Idempotency in Finalization)
-* **背景**：當前端因網路震盪，針對同一個會話發送兩次 `/finalize` 請求時，可能會造成競態條件 (Race Condition)。
-* **優化建議**：
-  - 在 `finalize_upload()` 中使用分散式鎖（或在資料庫使用 `SELECT FOR UPDATE`），在開始合併前，先將 `UploadSession` 標記為 `processing`，阻止併發結算。
-
-### 3. 2FA 備用復原碼實作 (2FA Recovery Codes)
-* **背景**：當使用者開啟 2FA 後，若不慎遺失或更換安裝了 Authenticator App 的行動裝置，將導致無法登入且無法自助停用 2FA。
-* **優化建議**：
-  - 在使用者成功啟用 2FA（`/2fa/enable`）時，同時產生 8~10 組一次性使用的備用復原碼（Recovery Codes），加密儲存於資料庫中，並回傳給前端提示使用者進行下載/備份。
-  - 在登入或驗證階段，支援輸入備用復原碼作為繞過 2FA OTP 的一次性登入憑證。
+- [x] 1. 安裝 `qrcode.vue` 處理 QRCode 生成
+- [x] 2. 更新 `src/api/auth.ts`，封裝 `/2fa/generate`, `/2fa/enable`, `/2fa/disable` 等 API。
+- [x] 3. 更新 `src/stores/auth.ts`，擴充 2FA 相關操作狀態管理。
+- [x] 4. 實作 `src/components/auth/TwoFactorEnableModal.vue` 元件 (依照 Figma UI 設計)。
+- [x] 5. 實作 `src/views/SettingsView.vue` 畫面與互動邏輯 (包含表單與呼叫 Modal)。
+- [x] 6. 測試完整的 2FA 啟用流程與後續登入驗證，並等待使用者確認完成。
