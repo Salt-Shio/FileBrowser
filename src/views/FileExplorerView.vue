@@ -13,7 +13,9 @@ import {
   Trash2, 
   Plus,
   Folder as FolderIcon,
-  File as FileIcon
+  File as FileIcon,
+  Upload as UploadIcon,
+  Download as DownloadIcon
 } from 'lucide-vue-next';
 
 const vfsStore = useVfsStore();
@@ -203,6 +205,56 @@ const handleConfirmMove = async () => {
     // 錯誤由 store 处理
   }
 };
+
+// --- 檔案上傳與下載邏輯 ---
+
+const fileInput = ref<HTMLInputElement | null>(null);
+
+const triggerFileInput = () => {
+  fileInput.value?.click();
+};
+
+const handleFileChange = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (!target.files) return;
+  for (let i = 0; i < target.files.length; i++) {
+    vfsStore.addUploadTaskAction(target.files[i]);
+  }
+  target.value = ''; // 允許重複上傳相同檔案觸發 change
+};
+
+const handleDownloadFile = async (fileId: string, filename: string) => {
+  await vfsStore.downloadFileAction(fileId, filename);
+};
+
+const cancelUpload = async (taskId: string) => {
+  await vfsStore.cancelUploadAction(taskId);
+};
+
+const activeUploadCount = computed(() => {
+  return vfsStore.uploadTasks.filter(t => t.status === 'uploading' || t.status === 'checking').length;
+});
+
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
+const getStatusLabel = (status: string) => {
+  switch (status) {
+    case 'checking': return '探測中';
+    case 'uploading': return '上傳中';
+    case 'finalizing': return '合併中...';
+    case 'success': return '成功';
+    case 'failed': return '失敗';
+    case 'canceled': return '已取消';
+    default: return status;
+  }
+};
 </script>
 
 <template>
@@ -250,14 +302,33 @@ const handleConfirmMove = async () => {
               {{ pathDisplay }}
             </p>
             
-            <!-- 新增資料夾按鈕 (Brutalist Style) -->
-            <button 
-              @click="openMkdirModal"
-              class="bg-white text-black hover:bg-mono-200 border-3 border-black rounded-[12px] px-4 py-1.5 text-xl font-extrabold flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all shrink-0"
-            >
-              <Plus class="w-5 h-5 stroke-[3]" />
-              新建資料夾
-            </button>
+            <!-- 操作按鈕組 -->
+            <div class="flex items-center gap-3 shrink-0">
+              <!-- 新增資料夾按鈕 (Brutalist Style) -->
+              <button 
+                @click="openMkdirModal"
+                class="bg-white text-black hover:bg-mono-200 border-3 border-black rounded-[12px] px-4 py-1.5 text-xl font-extrabold flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+              >
+                <Plus class="w-5 h-5 stroke-[3]" />
+                新建資料夾
+              </button>
+
+              <!-- 上傳檔案按鈕 (Brutalist Style) -->
+              <button 
+                @click="triggerFileInput"
+                class="bg-white text-black hover:bg-mono-200 border-3 border-black rounded-[12px] px-4 py-1.5 text-xl font-extrabold flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+              >
+                <UploadIcon class="w-5 h-5 stroke-[3]" />
+                上傳檔案
+              </button>
+              <input 
+                type="file" 
+                ref="fileInput" 
+                class="hidden" 
+                multiple 
+                @change="handleFileChange" 
+              />
+            </div>
           </div>
 
           <!-- 主要列表區域 (Frame 53 / 29:34) -->
@@ -357,6 +428,13 @@ const handleConfirmMove = async () => {
 
                 <!-- Hover 快捷操作按鈕組 (Hover 時顯示) -->
                 <div class="hidden group-hover:flex items-center gap-3" @click.stop>
+                  <button 
+                    @click="handleDownloadFile(file.id, file.name)"
+                    title="下載檔案"
+                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
+                  >
+                    <DownloadIcon class="w-5 h-5" />
+                  </button>
                   <button 
                     @click="openRenameModal(file.id, 'file', file.name)"
                     title="重新命名"
@@ -527,6 +605,67 @@ const handleConfirmMove = async () => {
         </div>
       </div>
     </BaseModal>
+
+    <!-- 5. 懸浮上傳進度面板 -->
+    <div 
+      v-if="vfsStore.uploadTasks.length > 0"
+      class="fixed bottom-6 right-6 z-50 w-[380px] bg-[#494949] border-[4px] border-black rounded-[20px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col text-white"
+    >
+      <!-- 面板標頭列 -->
+      <div class="bg-black text-white px-5 py-3 flex items-center justify-between border-b-3 border-black">
+        <span class="text-lg font-extrabold font-['Inter']">上傳傳輸管理</span>
+        <span class="text-xs bg-[#707070] border border-white px-2 py-0.5 rounded-full">
+          {{ activeUploadCount }} / {{ vfsStore.uploadTasks.length }}
+        </span>
+      </div>
+
+      <!-- 任務列表 -->
+      <div class="max-h-[280px] overflow-y-auto p-4 flex flex-col gap-3 bg-[#686666]">
+        <div 
+          v-for="task in vfsStore.uploadTasks" 
+          :key="task.id"
+          class="bg-[#494949] border-2 border-black rounded-xl p-3 flex flex-col gap-2 relative"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold truncate max-w-[220px]" :title="task.filename">
+              {{ task.filename }}
+            </span>
+            <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded border border-black bg-white text-black">
+              {{ getStatusLabel(task.status) }}
+            </span>
+          </div>
+
+          <!-- 進度條 -->
+          <div class="w-full bg-black border-2 border-black rounded-full h-4 overflow-hidden relative">
+            <div 
+              class="bg-green-400 h-full transition-all duration-300"
+              :style="{ width: `${task.progress}%` }"
+            ></div>
+            <span class="absolute inset-0 flex items-center justify-center text-[10px] font-extrabold text-white mix-blend-difference">
+              {{ task.progress }}%
+            </span>
+          </div>
+
+          <!-- 操作：取消與狀態 -->
+          <div class="flex items-center justify-between text-xs mt-1">
+            <span class="text-mono-200">
+              {{ formatBytes(task.file.size) }}
+            </span>
+            <button 
+              v-if="task.status === 'uploading' || task.status === 'checking'"
+              @click="cancelUpload(task.id)"
+              class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
+            >
+              取消
+            </button>
+            <span v-else-if="task.status === 'finalizing'" class="text-yellow-400 font-extrabold animate-pulse">合併中...</span>
+            <span v-else-if="task.status === 'success'" class="text-green-400 font-extrabold">✓ 已完成</span>
+            <span v-else-if="task.status === 'failed'" class="text-red-500 font-extrabold">✗ 失敗</span>
+            <span v-else-if="task.status === 'canceled'" class="text-mono-300 italic">已取消</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>

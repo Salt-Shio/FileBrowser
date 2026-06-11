@@ -30,3 +30,14 @@ export interface BrowseResponse {
   subfolders: Folder[];
   files: FileItem[];
 }
+
+export interface UploadTask {
+  id: string; // 隨機或雜湊的前端臨時 ID (我們可以用 `${filename}-${file.size}-${file.lastModified}`)
+  uploadId?: string; // 後端傳回的 upload_id
+  filename: string;
+  file: File;
+  progress: number; // 0 - 100
+  status: 'checking' | 'uploading' | 'finalizing' | 'success' | 'failed' | 'canceled';
+  uploadedChunks: number[];
+  cancelSource?: any; // 用於取消 Axios 請求的 CancelTokenSource
+}

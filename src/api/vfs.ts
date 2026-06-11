@@ -66,4 +66,67 @@ export const vfsApi = {
       node_type: nodeType,
     });
   },
+  /**
+   * 下載指定檔案
+   */
+  downloadFile(fileId: string) {
+    return api.get(`/vfs/download/${fileId}`, {
+      responseType: 'blob',
+    });
+  },
+  /**
+   * 初始化分塊上傳
+   */
+  initUpload(filename: string, totalChunks: number, targetFolderId?: string | null, expectedHash?: string | null) {
+    return api.post('/vfs/upload/init', {
+      filename,
+      total_chunks: totalChunks,
+      target_folder_id: targetFolderId || null,
+      expected_hash: expectedHash || null,
+    });
+  },
+  /**
+   * 上傳單個分塊
+   */
+  uploadChunk(
+    uploadId: string,
+    chunkIndex: number,
+    fileChunk: Blob,
+    onUploadProgress?: (progressEvent: any) => void,
+    cancelToken?: any
+  ) {
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    formData.append('chunk_index', chunkIndex.toString());
+    formData.append('file', fileChunk, 'chunk');
+    return api.post('/vfs/upload/chunk', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress,
+      cancelToken,
+    });
+  },
+  /**
+   * 查詢分塊上傳進度
+   */
+  getUploadStatus(uploadId: string) {
+    return api.get(`/vfs/upload/status/${uploadId}`);
+  },
+  /**
+   * 取消分塊上傳
+   */
+  cancelUpload(uploadId: string) {
+    return api.post('/vfs/upload/cancel', {
+      upload_id: uploadId,
+    });
+  },
+  /**
+   * 結算完成上傳
+   */
+  finalizeUpload(uploadId: string) {
+    return api.post('/vfs/upload/finalize', {
+      upload_id: uploadId,
+    });
+  },
 };
