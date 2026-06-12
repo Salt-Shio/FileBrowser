@@ -9,3 +9,4 @@ pyotp
 python-multipart
 Pillow
 pydantic-settings
+redis>=5.0.0

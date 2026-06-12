@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
-from app.database import Base
+from app.core.database import Base
 
 class Folder(Base):
     """

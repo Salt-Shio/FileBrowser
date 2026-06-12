@@ -48,18 +48,22 @@
 - [x] 3. 串接 `/upload/status/{upload_id}` 進行斷點續傳進度探測，支援前端恢復上傳。
 - [x] 4. 實作前端上傳進度控制面板，展示所有上傳任務，並支援「取消上傳」並調用 `/upload/cancel` API。
 - [x] 5. [優化項目] 檔案上傳成功後，延遲 3~5 秒將任務自動從面板清除，或提供手動關閉與清空已完成任務的按鈕。
-- [ ] 6. [優化項目] 解決大檔案（如 3GB）下載無反應、重複點擊導致後端效能超載（起飛）問題。改用「單次臨時 Ticket 憑證」接管原生下載流方案：
+- [ ] 6. [基礎設施] 引入 Redis 快取層與核心模組重構：
+  - **Redis 基礎建設**：於 `docker-compose` 加入 `redis:alpine`，並建立 `app/core/cache.py` 管理連線池。由 `main.py` 的 lifespan 負責連線啟動與優雅關閉，採用 Fail-fast 機制。
+  - **資料庫搬移**：將 `app/database.py` 移至 `app/core/database.py` 保持模組結構對稱齊平，並全域修正相關的 import 依賴（約 8 處）。
+  - **依賴注入**：於 `api/deps.py` 實作 `get_redis` 供路由層使用。
+- [ ] 7. [優化項目] 解決大檔案（如 3GB）下載無反應、重複點擊導致後端效能超載（起飛）問題。改用「單次臨時 Ticket 憑證」接管原生下載流方案：
   - **後端實作**：
-    - 新增 `POST /api/vfs/download/ticket/{file_id}`：校驗 JWT Bearer 權限，生成一次性、有效期 30 秒的隨機 UUID `ticket` 並暫存於記憶體/Redis。
-    - 修改 `GET /api/vfs/download/{file_id}`：支持自 URL Query 傳入 `?ticket=xxx`。若 Ticket 有效則**立即在後端銷毀該憑證**（確保單次使用）並以 `FileResponse` 流式傳輸檔案；若無效或已過期則直接阻斷回傳 `403 Forbidden`。
+    - 新增 `POST /api/vfs/download/ticket/{file_id}`：校驗 JWT Bearer 權限，生成一次性、有效期 30 秒的隨機 UUID `ticket` 並暫存於 **Redis** (`SET EX 30`)。
+    - 修改 `GET /api/vfs/download/{file_id}`：支持自 URL Query 傳入 `?ticket=xxx`。利用 Redis 的 `GETDEL` 原子操作保證憑證的**絕對單次使用**，防堵重放攻擊；有效則以 `FileResponse` 流式傳輸檔案，無效或已過期則直接阻斷回傳 `403 Forbidden`。
   - **前端實作**：
     - 點擊下載時，該檔案列按鈕立刻設為 `disabled` 狀態，圖示改為轉圈 Loading，防使用者焦慮重複狂點。
     - 發送 API 取得單次 Ticket，並透過隱藏的 `<iframe>`（或 `window.open`）載入下載連結，喚醒瀏覽器原生下載管理器（自動展示下載進度與剩餘時間，且記憶體零開銷）。
     - 觸發原生下載 3 秒後，自動解除按鈕禁用狀態，恢復為可下載狀態。
-- [ ] 7. [優化項目] 解決大檔案上傳速度慢的效能瓶頸，降低協定與資料庫等待開銷：
+- [ ] 8. [優化項目] 解決大檔案上傳速度慢的效能瓶頸，降低協定與資料庫等待開銷：
   - **動態分塊大小**：小檔案（<100MB）預設 `2MB`，中檔案（100MB~1GB）使用 `5MB`，大檔案（>=1GB）改用 `10MB` 或 `20MB` 分塊，直接降低 80% 的 HTTP 請求與後端 Session 查詢次數。
   - **併發分塊上傳**：取消單一 for 迴圈序列阻塞式 `await`，實作前端「限制併發數的 Promise 執行池」（例如 Concurrency = 3），同時上傳 3 個分塊，吃滿網路與硬碟寫入頻寬。
-- [ ] 8. [環境優化項目] 改善 Docker on Windows (WSL2) 掛載磁碟目錄造成的 I/O 延遲（大檔案合併瓶頸）。評估之三種改善方案與優缺點：
+- [ ] 9. [環境優化項目] 改善 Docker on Windows (WSL2) 掛載磁碟目錄造成的 I/O 延遲（大檔案合併瓶頸）。評估之三種改善方案與優缺點：
   - **方案 A：改用 Docker 具名卷 (Named Volume) 存放上傳數據 (如 `file-explorer-data:/app/data`)**
     - *優點*：I/O 速度大升 5~10 倍（原生 EXT4 讀寫），3GB 大檔案合併從近一分鐘降至數秒。
     - *缺點*：Windows 本機目錄中無法直觀看到 `./data` 下的實體檔案，需在 WSL2 終端機或 WSL 虛擬磁碟路徑中走訪。
@@ -69,4 +73,10 @@
   - **方案 C：從程式面改用「隨機寫入 (On-the-fly Random Access Write)」（同 TODO 6）**
     - *優點*：物理寫入量減半，最後 Finalize 幾乎秒開，且 Windows 目錄中仍可看見實體檔案。
     - *缺點*：後端上傳 Session 狀態探測（斷點續傳）必須重構，工程改動規模較大。
-- [ ] 9. [架構演進/長期優化] 將分塊上傳機制改為「邊傳邊寫 / 隨機寫入 (On-the-fly Random Access Write)」，以消除結算合併（Finalize）階段的大檔案物理合併 I/O 延遲，優化伺服器 SSD 寫入壽命。
+- [ ] 10. [架構演進/長期優化] 將分塊上傳機制改為「邊傳邊寫 / 隨機寫入 (On-the-fly Random Access Write)」，以消除結算合併（Finalize）階段的大檔案物理合併 I/O 延遲，優化伺服器 SSD 寫入壽命。
+
+---
+
+## Phase 7: 系統部分強化與優化
+- [ ] 1. **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，缺乏嚴格的一次性限制，有利暴力破解。
+- [ ] 2. **目錄結構快取 (Directory Cache)**: 利用 Redis 實作虛擬目錄架構快取，大幅降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。

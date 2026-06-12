@@ -8,7 +8,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import event
-from .core.config import settings
+from .config import settings
 
 # 1. 建立非同步資料庫引擎
 engine = create_async_engine(

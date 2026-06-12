@@ -8,7 +8,8 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
-from app.database import init_db
+from app.core.database import init_db
+from app.core.cache import init_redis, close_redis
 from app.gc.sentinel import run_gc_sentinel
 from app.middleware import RealIPMiddleware
 from app.api import api_router # 匯入總路由
@@ -19,6 +20,9 @@ from app.core.exceptions import BaseBusinessException, business_exception_handle
 async def lifespan(app: FastAPI):
     # 啟動時：透過封裝好的函式初始化資料庫
     await init_db()
+    
+    # 啟動時：初始化 Redis 快取連線池 (Fail-fast)
+    await init_redis()
     
     # 啟動時：建立並拉起背景垃圾回收定時哨兵任務
     gc_task = asyncio.create_task(run_gc_sentinel())
@@ -33,6 +37,9 @@ async def lifespan(app: FastAPI):
             await app.state.gc_task
         except asyncio.CancelledError:
             pass
+            
+    # 關閉時：優雅釋放 Redis 連線池
+    await close_redis()
 
 
 app = FastAPI(

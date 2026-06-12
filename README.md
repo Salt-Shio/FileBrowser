@@ -61,10 +61,11 @@ graph TD
         GC_Sentinel[背景 GC 哨兵: 定期大掃除]
     end
 
-    %% 第四層：數據持久化
-    subgraph Layer_4 [5. 數據持久層]
+    %% 第四層：數據持久化與快取
+    subgraph Layer_4 [5. 數據持久層與快取]
         DB[(SQLite: Metadata / 使用者)]
         Disk[實體磁碟: 二進制檔案]
+        RedisCache[(Redis: 臨時憑證 / 快取)]
     end
 
     %% 跨層對接邏輯
@@ -88,6 +89,7 @@ graph TD
     Auth_Core --> DB
     Session_Mgr --> DB
     VFS_Engine --> DB
+    VFS_Engine --> RedisCache
     Chunk_Mgr -- 暫存碎片與合併 --> Disk
     VFS_Engine -- 實體同步 --> Disk
     end
@@ -182,7 +184,7 @@ graph TD
 ## 技術棧
 - **Backend**: FastAPI (Python)
 - **Frontend**: Vue 3 + Vite + Tailwind CSS
-- **Database**: SQLAlchemy 2.0 (Async) + SQLite
+- **Database**: SQLAlchemy 2.0 (Async) + SQLite, Redis (Cache & Token)
 - **Security**: OAuth2 (Bearer Token), Argon2 (Password), PyOTP (2FA), Jose (JWT)
 - **Container**: Docker + Docker Compose
 

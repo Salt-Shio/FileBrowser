@@ -13,23 +13,24 @@ graph TD
     end
 
     subgraph Layer_2 [介面層 - Router]
-        AUTH_API["api/auth.py (身分驗證)"]
         VFS_API["api/vfs.py (檔案系統)"]
+        AUTH_API["api/auth.py (身分驗證)"]
     end
 
     subgraph Layer_3 [執行層 - Service & Deps]
-        AUTH_SVC["services/auth_service.py (身分業務)"]
-        VFS_SVC["services/vfs_service.py (檔案業務)"]
         DEPS["api/deps.py (依賴注入中心)"]
+        VFS_SVC["services/vfs_service.py (檔案業務)"]
+        AUTH_SVC["services/auth_service.py (身分業務)"]
     end
 
     subgraph Layer_4 [基礎層 - Security & Data]
+        DB[("database.py / DB")]
+        REDIS[("core/cache.py / Redis")]
+        MODELS["models/ (資料結構)"]
+        SCHEMAS["schemas/ (Pydantic)"]
         JWT["security/jwt.py"]
         HASHER["security/hasher.py"]
         OTP["security/otp.py"]
-        DB[("database.py / DB")]
-        MODELS["models/ (資料結構)"]
-        SCHEMAS["schemas/ (Pydantic)"]
     end
 
     %% 調用關係
@@ -37,37 +38,41 @@ graph TD
     MAIN --> CORE
     MAIN --> API_INIT
     MAIN --> GC_SENTINEL
+    MAIN -.->|Lifespan Init| DB
+    MAIN -.->|Lifespan Init| REDIS
 
-    API_INIT --> AUTH_API
     API_INIT --> VFS_API
+    API_INIT --> AUTH_API
 
     %% 業務與依賴
-    AUTH_API --> AUTH_SVC
-    AUTH_API --> DEPS
-    VFS_API --> VFS_SVC
     VFS_API --> DEPS
+    VFS_API --> VFS_SVC
+    AUTH_API --> DEPS
+    AUTH_API --> AUTH_SVC
 
-    %% 執行層調用基礎層
-    AUTH_SVC --> JWT
-    AUTH_SVC --> HASHER
-    AUTH_SVC --> OTP
-    AUTH_SVC --> DB
-    AUTH_SVC --> MODELS
+    %% 執行層調用基礎層 (排列解開交錯)
+    DEPS --> DB
+    DEPS --> REDIS
+    DEPS --> MODELS
+    DEPS --> JWT
 
     VFS_SVC --> DB
+    VFS_SVC --> REDIS
     VFS_SVC --> MODELS
     VFS_SVC --> JWT
 
-    DEPS --> DB
-    DEPS --> JWT
-    DEPS --> MODELS
+    AUTH_SVC --> DB
+    AUTH_SVC --> MODELS
+    AUTH_SVC --> JWT
+    AUTH_SVC --> HASHER
+    AUTH_SVC --> OTP
 
     %% 背景 GC 哨兵調用
     GC_SENTINEL --> DB
 
     %% Schema 調用
-    AUTH_API -.-> SCHEMAS
     VFS_API -.-> SCHEMAS
+    AUTH_API -.-> SCHEMAS
 
     %% 樣式美化
     style MAIN fill:#FF9800,stroke:#333,stroke-width:4px,color:#000
@@ -82,8 +87,8 @@ graph TD
 
 ## 核心層級說明
 
-1.  **管理層 (Top)**：`main.py` 負責將所有模組組裝起來。在應用啟動時，它會拉起背景垃圾回收哨兵 (`app/gc/sentinel.py`) 任務；並在應用關閉時，優雅地取消該哨兵，避免資源洩漏。
+1.  **管理層 (Top)**：`main.py` 負責將所有模組組裝起來。在應用啟動時，它會拉起背景垃圾回收哨兵 (`app/gc/sentinel.py`) 任務並初始化資料庫與 Redis 連線池 (`lifespan`)；並在應用關閉時，優雅地釋放連線與取消哨兵，避免資源洩漏。
 2.  **路由層 (Router)**：`api/` 負責分流外部 HTTP 請求，但不處理複雜邏輯。
-3.  **依賴層 (Deps)**：`deps.py` 像是一個橋樑，把底層的「資料庫」與「安全工具」提供給上層。
+3.  **依賴層 (Deps)**：`deps.py` 像是一個橋樑，把底層的「資料庫」、「Redis 快取」與「安全工具」提供給上層。
 4.  **執行層 (Logic)**：`services/` 才是真正動手處理資料的地方。
-5.  **基礎層 (Base)**：`models`, `database`, `security` 是最純粹的工具，不依賴任何人。
+5.  **基礎層 (Base)**：`models`, `database`, `cache.py`, `security` 是最純粹的工具，不依賴任何人。

@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal
 from app.gc.core import (
     gc_expired_sessions,
     gc_orphaned_temp_dirs,

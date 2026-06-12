@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     
     # 資料庫與存儲
     DATABASE_URL: str = os.getenv("DATABASE_URL")
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/app/data/uploads")
     TEMP_DIR: str = os.getenv("TEMP_DIR", "/app/data/temp")
     

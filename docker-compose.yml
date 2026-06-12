@@ -11,3 +11,10 @@ services:
       - ./server/app:/app/app
       - ./db:/app/db
       - ./data:/app/data
+
+  redis:
+    image: redis:alpine
+    container_name: file-explorer-redis
+    restart: always
+    expose:
+      - "6379"
