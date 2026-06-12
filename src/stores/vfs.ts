@@ -294,18 +294,36 @@ export const useVfsStore = defineStore('vfs', () => {
 
         // 每塊上傳
         let chunkProgress = 0;
-        await vfsApi.uploadChunk(
-          uploadId,
-          i,
-          chunkBlob,
-          (progressEvent) => {
-            if (progressEvent.total) {
-              chunkProgress = progressEvent.loaded / progressEvent.total;
-              updateTaskProgress(task, totalChunks, i, chunkProgress);
+        let retries = 3;
+        let success = false;
+        
+        while (retries > 0 && !success) {
+          try {
+            await vfsApi.uploadChunk(
+              uploadId,
+              i,
+              chunkBlob,
+              (progressEvent) => {
+                if (progressEvent.total) {
+                  chunkProgress = progressEvent.loaded / progressEvent.total;
+                  updateTaskProgress(task, totalChunks, i, chunkProgress);
+                }
+              },
+              source.token
+            );
+            success = true;
+          } catch (err: any) {
+            if (axios.isCancel(err)) {
+              throw err; // 若為使用者主動取消，直接拋出不重試
             }
-          },
-          source.token
-        );
+            retries--;
+            if (retries === 0) {
+              throw err; // 重試用盡，宣告失敗
+            }
+            // 稍等 1 秒後重試
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
 
         // 上傳成功後加入已上傳列表
         task.uploadedChunks.push(i);

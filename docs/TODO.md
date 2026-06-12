@@ -80,3 +80,9 @@
 ## Phase 7: 系統部分強化與優化
 - [ ] 1. **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，缺乏嚴格的一次性限制，有利暴力破解。
 - [ ] 2. **目錄結構快取 (Directory Cache)**: 利用 Redis 實作虛擬目錄架構快取，大幅降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。
+
+---
+
+## Phase 5.7: VFS 第 4 階段 - 大檔案上傳韌性強化 (Keep-Alive 衍伸問題)
+- [ ] 1. **正式環境連線設定 (Production Parity)**: 開發環境已於 `vite.config.ts` 啟用 Keep-Alive，但正式部署時須在 Nginx 或 Traefik 代理設定中明確啟用對後端 `upstream` 的 `keepalive`，否則正式環境的斷線問題將會重現。
+- [ ] 2. **前端靜默重試機制 (Retry Mechanism)**: 雖 Keep-Alive 解決了高頻率連線切換的底層阻塞，但遇到一般實體網路瞬斷或抖動時，仍會因為單個 chunk 失敗導致整個 3GB 檔案前功盡棄。需在不影響架構的前提下，於前端上傳迴圈中加入單個分塊的自動重試防護。

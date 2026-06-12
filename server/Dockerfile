@@ -21,4 +21,4 @@ COPY . .
 EXPOSE 8000
 
 # 8. 啟動指令：執行 FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "15"]
