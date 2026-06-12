@@ -15,7 +15,8 @@ import {
   Folder as FolderIcon,
   File as FileIcon,
   Upload as UploadIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  X
 } from 'lucide-vue-next';
 
 const vfsStore = useVfsStore();
@@ -344,8 +345,11 @@ const getStatusLabel = (status: string) => {
             </div>
 
             <!-- 錯誤提示 -->
-            <div v-if="vfsStore.error" class="p-6 m-4 bg-red-500/20 border-2 border-red-500 rounded-[15px] text-red-100 text-center text-xl font-bold">
-              {{ vfsStore.error }}
+            <div v-if="vfsStore.error" class="relative p-6 m-4 bg-red-500/20 border-2 border-red-500 rounded-[15px] text-red-100 text-center text-xl font-bold flex items-center justify-center">
+              <span>{{ vfsStore.error }}</span>
+              <button @click="vfsStore.error = null" class="absolute right-4 p-2 hover:bg-red-500/40 rounded-lg transition-colors cursor-pointer text-red-200 hover:text-white">
+                <X class="w-6 h-6" />
+              </button>
             </div>
 
             <!-- 檔案與資料夾列表 -->
@@ -613,10 +617,18 @@ const getStatusLabel = (status: string) => {
     >
       <!-- 面板標頭列 -->
       <div class="bg-black text-white px-5 py-3 flex items-center justify-between border-b-3 border-black">
-        <span class="text-lg font-extrabold font-['Inter']">上傳傳輸管理</span>
-        <span class="text-xs bg-[#707070] border border-white px-2 py-0.5 rounded-full">
-          {{ activeUploadCount }} / {{ vfsStore.uploadTasks.length }}
-        </span>
+        <div class="flex items-center gap-2">
+          <span class="text-lg font-extrabold font-['Inter']">上傳傳輸管理</span>
+          <span class="text-xs bg-[#707070] border border-white px-2 py-0.5 rounded-full">
+            {{ activeUploadCount }} / {{ vfsStore.uploadTasks.length }}
+          </span>
+        </div>
+        <button 
+          @click="vfsStore.clearFinishedTasksAction()"
+          class="text-xs font-bold bg-white text-black hover:bg-mono-200 px-2 py-1 rounded shadow-[2px_2px_0px_0px_rgba(255,255,255,0.3)] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer border border-transparent"
+        >
+          清除已結束
+        </button>
       </div>
 
       <!-- 任務列表 -->

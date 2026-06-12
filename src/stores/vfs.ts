@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, reactive } from 'vue';
+import { ref, reactive, watch } from 'vue';
 import { vfsApi } from '@/api/vfs';
 import type { Folder, FileItem, Breadcrumb, UploadTask } from '@/types/vfs';
 import axios from 'axios';
@@ -12,6 +12,19 @@ export const useVfsStore = defineStore('vfs', () => {
   const isLoading = ref(false);
   const error = ref<string | null>(null);
   const uploadTasks = ref<UploadTask[]>([]);
+
+  let errorTimeout: ReturnType<typeof setTimeout> | null = null;
+  watch(error, (newVal) => {
+    if (errorTimeout) {
+      clearTimeout(errorTimeout);
+      errorTimeout = null;
+    }
+    if (newVal) {
+      errorTimeout = setTimeout(() => {
+        error.value = null;
+      }, 5000); // 5秒後自動清除錯誤提示
+    }
+  });
 
   // 用於左側樹狀目錄的快取結構：key 為 folderId, value 為該目錄下的子項
   const directoryCache = reactive<Record<string, { folders: Folder[]; files: FileItem[] }>>({});
@@ -309,6 +322,11 @@ export const useVfsStore = defineStore('vfs', () => {
         
         // 重新載入當前目錄
         await fetchDirectory(currentFolder.value?.id);
+
+        // 成功後延遲 3 秒自動移除任務
+        setTimeout(() => {
+          removeTask(task.id);
+        }, 3000);
       }
     } catch (e: any) {
       if (axios.isCancel(e)) {
@@ -381,6 +399,25 @@ export const useVfsStore = defineStore('vfs', () => {
     localStorage.removeItem(cacheKey);
   }
 
+  /**
+   * 移除特定任務
+   */
+  function removeTask(taskId: string) {
+    const index = uploadTasks.value.findIndex(t => t.id === taskId);
+    if (index !== -1) {
+      uploadTasks.value.splice(index, 1);
+    }
+  }
+
+  /**
+   * 清除所有已結束 (非進行中) 的任務
+   */
+  function clearFinishedTasksAction() {
+    uploadTasks.value = uploadTasks.value.filter(
+      t => t.status === 'uploading' || t.status === 'checking' || t.status === 'finalizing'
+    );
+  }
+
   return {
     currentFolder,
     breadcrumbs,
@@ -401,5 +438,6 @@ export const useVfsStore = defineStore('vfs', () => {
     downloadFileAction,
     addUploadTaskAction,
     cancelUploadAction,
+    clearFinishedTasksAction,
   };
 });
