@@ -77,6 +77,14 @@ export const useAuthStore = defineStore('auth', () => {
     return response.data;
   }
 
+  async function changePassword(oldPassword: string, newPassword: string) {
+    const response = await authApi.changePassword({ 
+      old_password: oldPassword, 
+      new_password: newPassword 
+    });
+    return response.data;
+  }
+
   function logout() {
     user.value = null;
     token.value = '';
@@ -102,6 +110,7 @@ export const useAuthStore = defineStore('auth', () => {
     generate2FA,
     enable2FA,
     disable2FA,
+    changePassword,
     fetchUserProfile,
     logout
   };

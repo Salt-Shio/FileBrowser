@@ -205,3 +205,26 @@ class AuthService:
         
         return {"message": "2FA 停用成功"}
 
+    @staticmethod
+    async def change_password(db: AsyncSession, username: str, old_password: str, new_password: str):
+        """
+        修改使用者密碼
+        """
+        # 1. 尋找使用者
+        result = await db.execute(select(User).where(User.username == username))
+        user = result.scalars().first()
+        if not user:
+            from app.core.exceptions import NodeNotFoundError
+            raise NodeNotFoundError("使用者不存在")
+
+        # 2. 驗證舊密碼
+        if not hasher.verify_password(old_password, user.hashed_password):
+            from app.core.exceptions import AuthenticationError
+            raise AuthenticationError("舊密碼錯誤")
+
+        # 3. 更新密碼
+        user.hashed_password = hasher.get_password_hash(new_password)
+        await db.commit()
+        await db.refresh(user)
+
+        return {"message": "密碼修改成功"}

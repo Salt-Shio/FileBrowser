@@ -17,9 +17,9 @@
 
 ---
 
-## Phase 5.3: 設定頁面修改密碼功能整合 [待執行]
-- [ ] 1. 後端新增密碼更變與確認之 API 路由與對應 Service。
-- [ ] 2. 前端 [SettingsView.vue](file:///c:/Users/salt/Desktop/Project/FileBrowser/src/views/SettingsView.vue) 對接後端修改密碼 API，並將「確認」更變的邏輯落實。
+## Phase 5.3: 設定頁面修改密碼功能整合 [已完成 100%]
+- [x] 1. 後端新增密碼更變與確認之 API 路由與對應 Service。
+- [x] 2. 前端 [SettingsView.vue](file:///c:/Users/salt/Desktop/Project/FileBrowser/src/views/SettingsView.vue) 對接後端修改密碼 API，並將「確認」更變的邏輯落實。
 
 ---
 
@@ -42,7 +42,7 @@
 
 ---
 
-## Phase 5.6: VFS 第 3 階段 - 實體傳輸與分塊上傳 [已完成 100%]
+## Phase 5.6: VFS 第 3 階段 - 實體傳輸與分塊上傳 [已完成 50%]
 - [x] 1. 實作檔案下載功能，點擊下載按鈕時觸發 `/api/vfs/download/{file_id}`。
 - [x] 2. 實作大檔案前端切片，串接分塊上傳三階段工作流 (`/upload/init`, `/upload/chunk`, `/upload/finalize`)。
 - [x] 3. 串接 `/upload/status/{upload_id}` 進行斷點續傳進度探測，支援前端恢復上傳。

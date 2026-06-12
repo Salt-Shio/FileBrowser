@@ -79,3 +79,15 @@ async def disable_2fa(
     """
     return await AuthService.disable_2fa(db, current_user.username, data.otp_code)
 
+@router.post("/change-password")
+async def change_password(
+    data: schemas.auth.ChangePasswordRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    修改密碼
+    """
+    return await AuthService.change_password(
+        db, current_user.username, data.old_password, data.new_password
+    )

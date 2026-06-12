@@ -11,6 +11,9 @@
               <p class="font-medium text-[#474747] text-2xl text-center">使用者名稱</p>
             </div>
             <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
+              <p class="font-medium text-[#474747] text-2xl text-center">目前密碼</p>
+            </div>
+            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
               <p class="font-medium text-[#474747] text-2xl text-center">更改密碼</p>
             </div>
             <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
@@ -22,6 +25,9 @@
           <div class="flex flex-col gap-4 md:w-[541px] flex-grow">
             <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
               <input type="text" :value="authStore.user?.username" disabled class="w-full h-full outline-none font-medium text-xl text-[#adadad] bg-transparent" placeholder="請輸入新使用者名稱" />
+            </div>
+            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
+              <input type="password" v-model="oldPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請輸入目前密碼" />
             </div>
             <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
               <input type="password" v-model="newPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請輸入新密碼" />
@@ -67,9 +73,12 @@
 import { ref, computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import TwoFactorEnableModal from '@/components/auth/TwoFactorEnableModal.vue';
+import { useRouter } from 'vue-router';
 
 const authStore = useAuthStore();
+const router = useRouter();
 
+const oldPassword = ref('');
 const newPassword = ref('');
 const confirmPassword = ref('');
 
@@ -81,12 +90,24 @@ const errorMsg = ref('');
 
 const is2FAEnabled = computed(() => authStore.user?.is_totp_enabled || false);
 
-function handleSaveConfig() {
-  console.log('Save config clicked (Not implemented in backend yet)', {
-    newPassword: newPassword.value,
-    confirmPassword: confirmPassword.value
-  });
-  alert('設定功能尚未實作後端 API');
+async function handleSaveConfig() {
+  if (!oldPassword.value || !newPassword.value || !confirmPassword.value) {
+    alert('請填寫所有密碼欄位');
+    return;
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    alert('新密碼與確認密碼不一致');
+    return;
+  }
+
+  try {
+    await authStore.changePassword(oldPassword.value, newPassword.value);
+    alert('密碼修改成功，請重新登入！');
+    authStore.logout();
+    router.push('/login');
+  } catch (e: any) {
+    alert(e.response?.data?.detail || '密碼修改失敗');
+  }
 }
 
 async function open2FAModal() {

@@ -40,4 +40,7 @@ export const authApi = {
   disable2FA(payload: { otp_code: string }) {
     return api.post('/auth/2fa/disable', payload);
   },
+  changePassword(payload: { old_password: string; new_password: string }) {
+    return api.post('/auth/change-password', payload);
+  },
 };

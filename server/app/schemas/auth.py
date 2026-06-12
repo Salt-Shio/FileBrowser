@@ -52,3 +52,10 @@ class VerifyOTPRequest(BaseModel):
     驗證 OTP 驗證碼請求模型
     """
     otp_code: str
+
+class ChangePasswordRequest(BaseModel):
+    """
+    更改密碼請求模型
+    """
+    old_password: str
+    new_password: str
