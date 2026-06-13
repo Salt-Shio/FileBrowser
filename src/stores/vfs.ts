@@ -199,7 +199,7 @@ export const useVfsStore = defineStore('vfs', () => {
   }
 
   /**
-   * 下載檔案，先獲取臨時 Ticket，再建立原生 A 標籤下載連結喚起下載器 (記憶體零開銷)
+   * 下載檔案，先獲取臨時 Ticket，再建立隱藏的 iframe 觸發下載 (記憶體零開銷，防失敗跳轉)
    */
   async function downloadFileAction(fileId: string, filename: string) {
     try {
@@ -207,14 +207,34 @@ export const useVfsStore = defineStore('vfs', () => {
       const ticketRes = await vfsApi.getDownloadTicket(fileId);
       const ticket = ticketRes.data.ticket;
 
-      // 2. 建立原生下載連結，喚醒瀏覽器原生下載管理器
-      const downloadUrl = `/api/vfs/download/${fileId}?ticket=${ticket}`;
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // 2. 建立或獲取隱藏的 iframe 觸發原生下載
+      let iframe = document.getElementById('vfs-download-iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'vfs-download-iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
+
+      // 監聽 iframe onload 以捕捉下載失敗時的回應內容
+      iframe.onload = () => {
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (iframeDoc && iframeDoc.body) {
+            const textContent = (iframeDoc.body.textContent || iframeDoc.body.innerText || '').trim();
+            if (textContent) {
+              const errData = JSON.parse(textContent);
+              if (errData && errData.detail) {
+                error.value = `下載失敗: ${errData.detail}`;
+              }
+            }
+          }
+        } catch (_) {
+          // 若為成功下載或解析失敗則靜默忽略
+        }
+      };
+
+      iframe.src = `/api/vfs/download/${fileId}?ticket=${ticket}`;
     } catch (e: any) {
       console.error('Failed to download file:', e);
       error.value = e.response?.data?.detail || '下載檔案失敗';
