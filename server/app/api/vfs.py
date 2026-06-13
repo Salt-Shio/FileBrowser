@@ -6,11 +6,11 @@
 3. 整合身分驗證，確保使用者只能存取自己的檔案
 """
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, status, Form, File, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Query, Form, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
+from app.api.responses import MonitoredFileResponse
 from app.services.vfs_service import VFSService
 from app import schemas, filesystem
 from app.models import User
@@ -226,41 +226,59 @@ async def finalize_upload(
     )
 
 
-@router.get("/download/{file_id}", response_class=FileResponse)
-async def download_file(
+@router.post("/download/ticket/{file_id}")
+async def get_download_ticket(
     file_id: str,
     db: AsyncSession = Depends(deps.get_db),
+    redis_client = Depends(deps.get_redis),
     current_user: User = Depends(deps.get_current_user)
-) -> FileResponse:
+):
     """
-    下載指定 UUID 的檔案。
-    
-    安全與效能設計：
-    1. 身份與所有權驗證 (限 Owner 下載)
-    2. 物理存在性雙重校驗 (預防 Metadata 殘留但檔案遺失)
-    3. 流式傳輸與 HTTP Range 支援 (斷點續傳)
-    4. 安全遮蔽實體名稱，並在標頭綁定原始檔案名稱
+    為指定檔案生成一個 30 秒有效的臨時下載 Ticket。
+    30 秒內對同一使用者與同一檔案重複申請，回傳相同的 Ticket。
     """
-    # 1. 業務驗證與物理校驗
-    file_obj = await VFSService.prepare_download(
+    ticket = await VFSService.create_download_ticket(
         db=db,
+        redis_client=redis_client,
         file_id=file_id,
         owner_id=current_user.id
+    )
+    return {"ticket": ticket}
+
+
+@router.get("/download/{file_id}")
+async def download_file(
+    file_id: str,
+    ticket: str = Query(..., description="臨時下載憑證"),
+    db: AsyncSession = Depends(deps.get_db),
+    redis_client = Depends(deps.get_redis)
+) -> MonitoredFileResponse:
+    """
+    使用臨時憑證進行下載，限制 30 秒內最多發起 4 次請求。
+    不需要 JWT 驗證，憑證本身即為授權依據。
+    """
+    # 1. 呼叫服務層進行憑證校驗、連線數判定與檔案擁有權檢查
+    file_obj = await VFSService.verify_and_prepare_download(
+        db=db,
+        redis_client=redis_client,
+        file_id=file_id,
+        ticket=ticket
     )
 
     # 2. 取得絕對實體路徑
     physical_path = filesystem.get_full_path(file_obj.storage_path)
 
-    # 3. 封裝安全與快取校驗標頭 (ETag)
+    # 3. 封裝快取校驗標頭
     headers = {
         "ETag": f'"{file_obj.hash_sha256}"'
     }
 
-    # 4. 回傳 FileResponse 串流
-    return FileResponse(
+    # 4. 回傳自訂的 MonitoredFileResponse 監控連線
+    return MonitoredFileResponse(
         path=physical_path,
         filename=file_obj.name,
         media_type=file_obj.mime_type or "application/octet-stream",
         headers=headers
     )
+
 

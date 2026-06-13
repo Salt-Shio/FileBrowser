@@ -5,6 +5,8 @@
 2. 實作導航核心 (UUID 查詢與麵包屑生成)
 3. 確保所有操作皆符合擁有者權限驗證 (Security)
 """
+import json
+import uuid
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -12,7 +14,12 @@ from sqlalchemy import update
 from app.models import Folder, File, UploadSession
 from app.schemas.vfs import Breadcrumb
 from app import filesystem
-from app.core.exceptions import NodeNotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    NodeNotFoundError,
+    PermissionDeniedError,
+    InvalidTicketError,
+    TicketRateLimitError,
+)
 
 class VFSService:
     """
@@ -664,4 +671,80 @@ class VFSService:
             "upload_id": upload_id
         }
 
+    @staticmethod
+    async def create_download_ticket(
+        db: AsyncSession,
+        redis_client,
+        file_id: str,
+        owner_id: str
+    ) -> str:
+        """
+        驗證使用者的下載權限，並生成或複用一個 30 秒有效的臨時下載 Ticket UUID。
+        30 秒內對同一使用者與同一檔案重複申請，直接複用已存在的 UUID，不生成新憑證。
+        """
+        # 1. 驗證檔案存在性與擁有者權限
+        await VFSService.prepare_download(db=db, file_id=file_id, owner_id=owner_id)
 
+        # 2. 查詢防刷鎖，30 秒內存在則直接複用
+        user_download_key = f"vfs:ticket:user_download:{owner_id}:{file_id}"
+        existing_ticket = await redis_client.get(user_download_key)
+        if existing_ticket:
+            return existing_ticket
+
+        # 3. 生成新的 Ticket UUID 與憑證資料
+        ticket_uuid = str(uuid.uuid4())
+        ticket_data = json.dumps({"file_id": file_id, "owner_id": owner_id})
+        ticket_key = f"vfs:ticket:download:{ticket_uuid}"
+
+        # 4. 寫入 Redis 雙向映射，TTL 均固定為 30 秒，到期自然過期消亡
+        await redis_client.set(user_download_key, ticket_uuid, ex=30)
+        await redis_client.set(ticket_key, ticket_data, ex=30)
+
+        return ticket_uuid
+
+    @staticmethod
+    async def verify_and_prepare_download(
+        db: AsyncSession,
+        redis_client,
+        file_id: str,
+        ticket: str
+    ) -> File:
+        """
+        從 Redis 驗證 Ticket 憑證的有效性與連線數上限，通過後返回實體檔案物件。
+        連線計數只增不減，完全依靠 30 秒 TTL 自動清理，不在 finally 中執行 Redis 操作。
+        """
+        ticket_key = f"vfs:ticket:download:{ticket}"
+        active_conns_key = f"vfs:ticket:active_conns:{ticket}"
+
+        # 1. 驗證憑證存在且未過期
+        ticket_data_raw = await redis_client.get(ticket_key)
+        if not ticket_data_raw:
+            raise InvalidTicketError("無效或已過期的下載憑證")
+
+        # 2. 解析憑證內容
+        try:
+            ticket_data = json.loads(ticket_data_raw)
+        except Exception:
+            raise InvalidTicketError("憑證資料解析錯誤")
+
+        # 3. 確認憑證指派的檔案與請求一致
+        if ticket_data.get("file_id") != file_id:
+            raise InvalidTicketError("下載憑證與檔案不符")
+
+        owner_id = ticket_data.get("owner_id")
+
+        # 4. 原子累加連線計數，首次連線時設定 TTL 30 秒
+        new_conn_count = await redis_client.incr(active_conns_key)
+        if new_conn_count == 1:
+            await redis_client.expire(active_conns_key, 30)
+
+        # 5. 超過上限直接阻斷，不手動刪除或遞減，固定等 TTL 自動消亡
+        if new_conn_count > 4:
+            raise TicketRateLimitError("該憑證的下載請求次數已達上限")
+
+        # 6. 通過所有驗證後，呼叫既有業務邏輯校驗檔案狀態與磁碟完整性
+        return await VFSService.prepare_download(
+            db=db,
+            file_id=file_id,
+            owner_id=owner_id
+        )

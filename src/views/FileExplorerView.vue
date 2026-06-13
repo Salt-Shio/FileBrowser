@@ -16,6 +16,7 @@ import {
   File as FileIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
+  Loader2,
   X
 } from 'lucide-vue-next';
 
@@ -224,8 +225,21 @@ const handleFileChange = (event: Event) => {
   target.value = ''; // 允許重複上傳相同檔案觸發 change
 };
 
+const downloadingFiles = ref<Record<string, boolean>>({});
+
 const handleDownloadFile = async (fileId: string, filename: string) => {
-  await vfsStore.downloadFileAction(fileId, filename);
+  if (downloadingFiles.value[fileId]) return;
+  downloadingFiles.value[fileId] = true;
+  try {
+    await vfsStore.downloadFileAction(fileId, filename);
+  } catch (err) {
+    console.error('Failed to trigger download:', err);
+  } finally {
+    // 3 秒後自動解除按鈕禁用與轉圈狀態，防重複狂點
+    setTimeout(() => {
+      downloadingFiles.value[fileId] = false;
+    }, 3000);
+  }
 };
 
 const cancelUpload = async (taskId: string) => {
@@ -434,10 +448,12 @@ const getStatusLabel = (status: string) => {
                 <div class="hidden group-hover:flex items-center gap-3" @click.stop>
                   <button 
                     @click="handleDownloadFile(file.id, file.name)"
+                    :disabled="downloadingFiles[file.id]"
                     title="下載檔案"
-                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
+                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <DownloadIcon class="w-5 h-5" />
+                    <Loader2 v-if="downloadingFiles[file.id]" class="w-5 h-5 animate-spin" />
+                    <DownloadIcon v-else class="w-5 h-5" />
                   </button>
                   <button 
                     @click="openRenameModal(file.id, 'file', file.name)"

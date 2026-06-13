@@ -48,11 +48,11 @@
 - [x] 3. 串接 `/upload/status/{upload_id}` 進行斷點續傳進度探測，支援前端恢復上傳。
 - [x] 4. 實作前端上傳進度控制面板，展示所有上傳任務，並支援「取消上傳」並調用 `/upload/cancel` API。
 - [x] 5. [優化項目] 檔案上傳成功後，延遲 3~5 秒將任務自動從面板清除，或提供手動關閉與清空已完成任務的按鈕。
-- [ ] 6. [基礎設施] 引入 Redis 快取層與核心模組重構：
+- [x] 6. [基礎設施] 引入 Redis 快取層與核心模組重構：
   - **Redis 基礎建設**：於 `docker-compose` 加入 `redis:alpine`，並建立 `app/core/cache.py` 管理連線池。由 `main.py` 的 lifespan 負責連線啟動與優雅關閉，採用 Fail-fast 機制。
   - **資料庫搬移**：將 `app/database.py` 移至 `app/core/database.py` 保持模組結構對稱齊平，並全域修正相關的 import 依賴（約 8 處）。
   - **依賴注入**：於 `api/deps.py` 實作 `get_redis` 供路由層使用。
-- [ ] 7. [優化項目] 解決大檔案（如 3GB）下載無反應、重複點擊導致後端效能超載（起飛）問題。改用「單次臨時 Ticket 憑證」接管原生下載流方案：
+- [x] 7. [優化項目] 解決大檔案（如 3GB）下載無反應、重複點擊導致後端效能超載（起飛）問題。改用「單次臨時 Ticket 憑證」接管原生下載流方案：
   - **後端實作**：
     - 新增 `POST /api/vfs/download/ticket/{file_id}`：校驗 JWT Bearer 權限，生成一次性、有效期 30 秒的隨機 UUID `ticket` 並暫存於 **Redis** (`SET EX 30`)。
     - 修改 `GET /api/vfs/download/{file_id}`：支持自 URL Query 傳入 `?ticket=xxx`。利用 Redis 的 `GETDEL` 原子操作保證憑證的**絕對單次使用**，防堵重放攻擊；有效則以 `FileResponse` 流式傳輸檔案，無效或已過期則直接阻斷回傳 `403 Forbidden`。

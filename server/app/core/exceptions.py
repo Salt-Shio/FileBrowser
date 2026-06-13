@@ -67,6 +67,22 @@ class UploadSessionValidationError(BaseBusinessException):
         super().__init__(message, status_code=400)
 
 
+class InvalidTicketError(BaseBusinessException):
+    """
+    臨時下載憑證無效、已過期或與請求檔案不符
+    """
+    def __init__(self, message: str = "無效或已過期的下載憑證"):
+        super().__init__(message, status_code=403)
+
+
+class TicketRateLimitError(BaseBusinessException):
+    """
+    該憑證的下載連線次數已達上限（最多 4 次）
+    """
+    def __init__(self, message: str = "該憑證的下載請求次數已達上限"):
+        super().__init__(message, status_code=403)
+
+
 
 async def business_exception_handler(request: Request, exc: BaseBusinessException):
     """

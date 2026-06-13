@@ -67,10 +67,17 @@ export const vfsApi = {
     });
   },
   /**
-   * 下載指定檔案
+   * 獲取臨時下載憑證
    */
-  downloadFile(fileId: string) {
+  getDownloadTicket(fileId: string) {
+    return api.post(`/vfs/download/ticket/${fileId}`);
+  },
+  /**
+   * 下載指定檔案 (使用臨時憑證)
+   */
+  downloadFile(fileId: string, ticket: string) {
     return api.get(`/vfs/download/${fileId}`, {
+      params: { ticket },
       responseType: 'blob',
     });
   },

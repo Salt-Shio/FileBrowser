@@ -199,24 +199,26 @@ export const useVfsStore = defineStore('vfs', () => {
   }
 
   /**
-   * 下載檔案，使用帶有 Token 的請求獲取 Blob，並在瀏覽器本地觸發下載
+   * 下載檔案，先獲取臨時 Ticket，再建立原生 A 標籤下載連結喚起下載器 (記憶體零開銷)
    */
   async function downloadFileAction(fileId: string, filename: string) {
     try {
-      const response = await vfsApi.downloadFile(fileId);
-      const contentType = response.headers['content-type'];
-      const blob = new Blob([response.data], { type: typeof contentType === 'string' ? contentType : undefined });
-      const url = window.URL.createObjectURL(blob);
+      // 1. 獲取臨時下載憑證
+      const ticketRes = await vfsApi.getDownloadTicket(fileId);
+      const ticket = ticketRes.data.ticket;
+
+      // 2. 建立原生下載連結，喚醒瀏覽器原生下載管理器
+      const downloadUrl = `/api/vfs/download/${fileId}?ticket=${ticket}`;
       const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
+      link.href = downloadUrl;
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
     } catch (e: any) {
       console.error('Failed to download file:', e);
-      error.value = '下載檔案失敗';
+      error.value = e.response?.data?.detail || '下載檔案失敗';
+      throw e;
     }
   }
 
