@@ -34,11 +34,15 @@ async def login(data: schemas.auth.LoginRequest, db: AsyncSession = Depends(deps
     return await AuthService.login(db, data.username, data.password)
 
 @router.post("/verify-2fa", response_model=schemas.user.Token)
-async def verify_2fa(data: schemas.auth.Verify2FARequest, db: AsyncSession = Depends(deps.get_db)):
+async def verify_2fa(
+    data: schemas.auth.Verify2FARequest,
+    db: AsyncSession = Depends(deps.get_db),
+    redis_client = Depends(deps.get_redis)
+):
     """
     第二階段：2FA 驗證與簽發 JWT
     """
-    return await AuthService.verify_2fa(db, data.two_fa_token, data.otp_code)
+    return await AuthService.verify_2fa(db, redis_client, data.two_fa_token, data.otp_code)
 
 @router.get("/me", response_model=schemas.user.UserResponse)
 async def get_me(current_user: User = Depends(deps.get_current_user)):
@@ -61,23 +65,25 @@ async def generate_2fa(
 async def enable_2fa(
     data: schemas.auth.VerifyOTPRequest,
     db: AsyncSession = Depends(deps.get_db),
+    redis_client = Depends(deps.get_redis),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     驗證首次 2FA 碼並正式啟用 2FA 功能
     """
-    return await AuthService.enable_2fa(db, current_user.username, data.otp_code)
+    return await AuthService.enable_2fa(db, redis_client, current_user.username, data.otp_code)
 
 @router.post("/2fa/disable")
 async def disable_2fa(
     data: schemas.auth.VerifyOTPRequest,
     db: AsyncSession = Depends(deps.get_db),
+    redis_client = Depends(deps.get_redis),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     驗證當前 2FA 碼並正式停用 2FA 功能
     """
-    return await AuthService.disable_2fa(db, current_user.username, data.otp_code)
+    return await AuthService.disable_2fa(db, redis_client, current_user.username, data.otp_code)
 
 @router.post("/change-password")
 async def change_password(

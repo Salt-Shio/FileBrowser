@@ -79,7 +79,7 @@
 ---
 
 ## Phase 7: 系統部分強化與優化
-- [ ] 1. **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，缺乏嚴格的一次性限制，有利暴力破解。
+- [x] 1. **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，缺乏嚴格的一次性限制，有利暴力破解。（已完成後端與 Redis 的防重放快取驗證鎖）
 - [ ] 2. **目錄結構快取 (Directory Cache)**: 利用 Redis 實作虛擬目錄架構快取，大幅降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。
 
 ---
@@ -100,4 +100,4 @@
 - [x] 7. 修改 [vfs_service.py](file:///d:/Project/file-explorer/server/app/services/vfs_service.py) 套用下載憑證 TTL 與限流設定。
 - [x] 8. 修改 [storage.py](file:///d:/Project/file-explorer/server/app/filesystem/storage.py) 套用檔案合併讀取緩衝區大小設定。
 - [x] 9. 修改 [jwt.py](file:///d:/Project/file-explorer/server/app/security/jwt.py) 套用 2FA 臨時驗證權杖有效期限。
-- [ ] 10. 本地前後端測試與執行驗證。
+- [x] 10. 本地前後端測試與執行驗證。

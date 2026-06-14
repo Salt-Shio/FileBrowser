@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # 2FA 綁定臨時權杖有效期限 (分鐘)
     TWO_FA_SETUP_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("TWO_FA_SETUP_TOKEN_EXPIRE_MINUTES", 5))
 
+    # 2FA 重放防禦快取時效 (秒)
+    TWO_FA_REPLAY_TTL: int = int(os.getenv("TWO_FA_REPLAY_TTL", 60))
+
     class Config:
         case_sensitive = True
 

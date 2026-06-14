@@ -81,7 +81,7 @@ class AuthService:
             }
 
     @staticmethod
-    async def verify_2fa(db: AsyncSession, two_fa_token: str, otp_code: str):
+    async def verify_2fa(db: AsyncSession, redis_client, two_fa_token: str, otp_code: str):
         """
         第二階段：2FA 驗證與簽發 JWT
         """
@@ -93,7 +93,14 @@ class AuthService:
         
         username = payload.get("sub")
 
-        # 2. 尋找使用者
+        # 2. Replay 防禦：檢查該使用者的驗證碼在此週期內是否已被使用過
+        replay_key = f"auth:lock:2fa_replay:{username}:{otp_code}"
+        is_used = await redis_client.get(replay_key)
+        if is_used:
+            from app.core.exceptions import AuthenticationError
+            raise AuthenticationError("2FA 驗證碼已被使用，請使用新生成的驗證碼")
+
+        # 3. 尋找使用者
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         
@@ -101,12 +108,16 @@ class AuthService:
             from app.core.exceptions import NodeNotFoundError
             raise NodeNotFoundError("使用者不存在")
         
-        # 3. 驗證 2FA 代碼
+        # 4. 驗證 2FA 代碼
         if not otp.verify_otp_code(user.totp_secret, otp_code):
             from app.core.exceptions import AuthenticationError
             raise AuthenticationError("2FA 驗證碼錯誤或已過期")
         
-        # 4. 簽發正式 JWT
+        # 5. 驗證成功後，標記該代碼在此週期內已被使用，防止重放攻擊
+        from app.core.config import settings
+        await redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
+
+        # 6. 簽發正式 JWT
         access_token = jwt.create_access_token(data={"sub": user.username})
         
         return {
@@ -149,7 +160,7 @@ class AuthService:
         }
 
     @staticmethod
-    async def enable_2fa(db: AsyncSession, username: str, otp_code: str):
+    async def enable_2fa(db: AsyncSession, redis_client, username: str, otp_code: str):
         """
         驗證首次 2FA 代碼，正式啟用 2FA 功能
         """
@@ -163,13 +174,24 @@ class AuthService:
         if not user.totp_secret:
             from app.core.exceptions import BaseBusinessException
             raise BaseBusinessException("請先請求產生 2FA 金鑰", status_code=400)
-            
-        # 驗證 OTP 驗證碼
+
+        # 2. Replay 防禦
+        replay_key = f"auth:lock:2fa_replay:{username}:{otp_code}"
+        is_used = await redis_client.get(replay_key)
+        if is_used:
+            from app.core.exceptions import AuthenticationError
+            raise AuthenticationError("2FA 驗證碼已被使用，請使用新生成的驗證碼")
+
+        # 3. 驗證 OTP 驗證碼
         if not otp.verify_otp_code(user.totp_secret, otp_code):
             from app.core.exceptions import AuthenticationError
             raise AuthenticationError("2FA 驗證碼錯誤或已過期")
-            
-        # 驗證成功，正式開啟 2FA 開關
+
+        # 4. 驗證成功，標記代碼已被使用
+        from app.core.config import settings
+        await redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
+
+        # 5. 正式開啟 2FA 開關
         user.is_totp_enabled = True
         await db.commit()
         await db.refresh(user)
@@ -177,7 +199,7 @@ class AuthService:
         return {"message": "2FA 啟用成功"}
 
     @staticmethod
-    async def disable_2fa(db: AsyncSession, username: str, otp_code: str):
+    async def disable_2fa(db: AsyncSession, redis_client, username: str, otp_code: str):
         """
         驗證當前 2FA 代碼，停用 2FA 功能
         """
@@ -191,13 +213,24 @@ class AuthService:
         if not user.is_totp_enabled or not user.totp_secret:
             from app.core.exceptions import BaseBusinessException
             raise BaseBusinessException("使用者尚未啟用 2FA", status_code=400)
-            
-        # 驗證 OTP 驗證碼
+
+        # 2. Replay 防禦
+        replay_key = f"auth:lock:2fa_replay:{username}:{otp_code}"
+        is_used = await redis_client.get(replay_key)
+        if is_used:
+            from app.core.exceptions import AuthenticationError
+            raise AuthenticationError("2FA 驗證碼已被使用，請使用新生成的驗證碼")
+
+        # 3. 驗證 OTP 驗證碼
         if not otp.verify_otp_code(user.totp_secret, otp_code):
             from app.core.exceptions import AuthenticationError
             raise AuthenticationError("2FA 驗證碼錯誤或已過期")
-            
-        # 驗證成功，停用 2FA 並清除金鑰
+
+        # 4. 驗證成功，標記代碼已被使用
+        from app.core.config import settings
+        await redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
+
+        # 5. 停用 2FA 並清除金鑰
         user.is_totp_enabled = False
         user.totp_secret = None
         await db.commit()
