@@ -19,10 +19,10 @@ async def init_redis():
     """
     global redis_client
     try:
-        # 建立連線池 (設定 max_connections=20，根據架構文件定案)
+        # 建立連線池 (設定 max_connections 由 settings 讀取)
         pool = redis.ConnectionPool.from_url(
             settings.REDIS_URL,
-            max_connections=20,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
             decode_responses=True # 自動將回傳值解碼為字串
         )
         redis_client = redis.Redis(connection_pool=pool)

@@ -35,6 +35,23 @@ class Settings(BaseSettings):
     UPLOAD_SESSION_EXPIRE_HOURS: int = int(os.getenv("UPLOAD_SESSION_EXPIRE_HOURS", 24))
     GC_INTERVAL_SECONDS: int = int(os.getenv("GC_INTERVAL_SECONDS", 3600))
 
+    # Uvicorn 伺服器設定
+    APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
+    APP_PORT: int = int(os.getenv("APP_PORT", 8000))
+
+    # Redis 連線設定
+    REDIS_MAX_CONNECTIONS: int = int(os.getenv("REDIS_MAX_CONNECTIONS", 20))
+
+    # 下載憑證相關參數 (VFS Download Ticket)
+    DOWNLOAD_TICKET_TTL: int = int(os.getenv("DOWNLOAD_TICKET_TTL", 30))
+    DOWNLOAD_TICKET_MAX_REQUESTS: int = int(os.getenv("DOWNLOAD_TICKET_MAX_REQUESTS", 4))
+
+    # 檔案合併讀取緩衝區大小 (Byte，預設為 1MB)
+    FILE_MERGE_BUFFER_SIZE: int = int(os.getenv("FILE_MERGE_BUFFER_SIZE", 1048576))
+
+    # 2FA 綁定臨時權杖有效期限 (分鐘)
+    TWO_FA_SETUP_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("TWO_FA_SETUP_TOKEN_EXPIRE_MINUTES", 5))
+
     class Config:
         case_sensitive = True
 

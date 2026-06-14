@@ -86,4 +86,18 @@
 
 ## Phase 5.7: VFS 第 4 階段 - 大檔案上傳韌性強化 (Keep-Alive 衍伸問題)
 - [ ] 1. **正式環境連線設定 (Production Parity)**: 開發環境已於 `vite.config.ts` 啟用 Keep-Alive，但正式部署時須在 Nginx 或 Traefik 代理設定中明確啟用對後端 `upstream` 的 `keepalive`，否則正式環境的斷線問題將會重現。
-- [ ] 2. **前端靜默重試機制 (Retry Mechanism)**: 雖 Keep-Alive 解決了高頻率連線切換的底層阻塞，但遇到一般實體網路瞬斷或抖動時，仍會因為單個 chunk 失敗導致整個 3GB 檔案前功盡棄。需在不影響架構的前提下，於前端上傳迴圈中加入單個分塊的自動重試防護。
+- [ ] 2. **前端靜默重試機制 (Retry Mechanism)**: 雖 Keep-Alive 解決了高頻率連線切換 of 底層阻塞，但遇到一般實體網路瞬斷或抖動時，仍會因為單個 chunk 失敗導致整個 3GB 檔案前功盡棄。需在不影響架構的前提下，於前端上傳迴圈中加入單個分塊的自動重試防護。
+
+---
+
+## Phase 8: 參數與環境變數抽取 (設定分離版) [已完成 90%]
+- [x] 1. 於專案根目錄建立新環境設定檔 `.env` 存放前端代理設定。
+- [x] 2. 修改 [vite.config.ts](file:///d:/Project/file-explorer/vite.config.ts) 引入 `loadEnv` 讀取前端代理變數。
+- [x] 3. 於後端 [server/.env](file:///d:/Project/file-explorer/server/.env) 新增伺服器與 Redis 快取最大連線設定、下載憑證 TTL、限流次數、合併緩衝、2FA 權杖有效期限等變數。
+- [x] 4. 修改後端 [config.py](file:///d:/Project/file-explorer/server/app/core/config.py) 讀取並定義以上新增的各項設定值。
+- [x] 5. 修改後端 [main.py](file:///d:/Project/file-explorer/server/app/main.py) 的 `uvicorn.run` 使其套用環境變數的 Host 與 Port。
+- [x] 6. 修改後端 [cache.py](file:///d:/Project/file-explorer/server/app/core/cache.py) 以環境變數設定 Redis 連線池最大連線數。
+- [x] 7. 修改 [vfs_service.py](file:///d:/Project/file-explorer/server/app/services/vfs_service.py) 套用下載憑證 TTL 與限流設定。
+- [x] 8. 修改 [storage.py](file:///d:/Project/file-explorer/server/app/filesystem/storage.py) 套用檔案合併讀取緩衝區大小設定。
+- [x] 9. 修改 [jwt.py](file:///d:/Project/file-explorer/server/app/security/jwt.py) 套用 2FA 臨時驗證權杖有效期限。
+- [ ] 10. 本地前後端測試與執行驗證。

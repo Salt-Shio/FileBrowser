@@ -36,9 +36,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def create_2fa_token(username: str) -> str:
     """
-    簽發一個極短效的 2FA 驗證憑證 (5 分鐘)
+    簽發一個極短效的 2FA 驗證憑證
     """
-    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.TWO_FA_SETUP_TOKEN_EXPIRE_MINUTES)
     to_encode = {"sub": username, "exp": expire, "type": "2fa"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 

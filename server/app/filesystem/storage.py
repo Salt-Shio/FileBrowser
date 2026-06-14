@@ -62,9 +62,9 @@ async def merge_from_chunks(upload_id: str, total_chunks: int) -> Dict[str, Any]
                     raise FileNotFoundError(f"合併失敗：缺失分塊 {i}")
                 
                 with open(chunk_path, "rb") as source_f:
-                    # 每次讀取 1MB，減少 Python 迴圈與系統呼叫開銷以加速大檔案物理合併
+                    # 每次讀取由 settings 設定的緩衝區大小，以加速大檔案物理合併
                     while True:
-                        buffer = source_f.read(1024 * 1024)
+                        buffer = source_f.read(settings.FILE_MERGE_BUFFER_SIZE)
                         if not buffer:
                             break
                         target_f.write(buffer)
