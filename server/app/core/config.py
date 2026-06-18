@@ -55,7 +55,12 @@ class Settings(BaseSettings):
     # 2FA 重放防禦快取時效 (秒)
     TWO_FA_REPLAY_TTL: int = int(os.getenv("TWO_FA_REPLAY_TTL", 60))
 
+    # 目錄快取控制
+    VFS_DIRECTORY_CACHE_ENABLED: bool = os.getenv("VFS_DIRECTORY_CACHE_ENABLED", "True").lower() == "true"
+    VFS_DIRECTORY_CACHE_TTL: int = int(os.getenv("VFS_DIRECTORY_CACHE_TTL", 3600))
+
     class Config:
+
         case_sensitive = True
 
 # 實例化供全域使用

@@ -27,28 +27,8 @@ async def list_directory(
     """
     獲取指定目錄的內容，包含子資料夾、檔案與導航麵包屑。
     """
-    # 1. 決定目標資料夾
-    if folder_id is None:
-        # 使用者未指定 ID，獲取或建立其根目錄
-        current_folder = await VFSService.get_or_create_root(db, current_user.id)
-        target_id = current_folder.id
-    else:
-        # 使用者指定了 ID，從資料庫查詢並驗證權限
-        current_folder = await VFSService.get_folder_by_id(db, folder_id, current_user.id)
-        if not current_folder:
-            raise NodeNotFoundError("資料夾不存在或無權限存取")
-        target_id = current_folder.id
+    return await VFSService.get_browse_data(db, folder_id, current_user.id)
 
-    # 2. 獲取該目錄下的詳細內容
-    browse_data = await VFSService.get_browse_data(db, target_id, current_user.id)
-
-    # 3. 封裝回傳內容 (對齊 BrowseResponse Schema)
-    return {
-        "current_folder": current_folder,
-        "breadcrumbs": browse_data["breadcrumbs"],
-        "subfolders": browse_data["folders"],
-        "files": browse_data["files"]
-    }
 
 @router.get("/search", response_model=schemas.vfs.SearchResponse)
 async def search_nodes(

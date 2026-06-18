@@ -7,20 +7,31 @@
 """
 import json
 import uuid
+import asyncio
 from typing import Optional, List
+from datetime import datetime, timezone
+from mimetypes import guess_type
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
+
 from app.models import Folder, File, UploadSession
-from app.schemas.vfs import Breadcrumb
+from app.schemas.vfs import Breadcrumb, BrowseResponse
 from app import filesystem
 from app.core.config import settings
+from app.core import cache
 from app.core.exceptions import (
     NodeNotFoundError,
     PermissionDeniedError,
     InvalidTicketError,
     TicketRateLimitError,
+    BaseBusinessException,
+    DuplicateNodeError,
+    UploadSessionNotFoundError,
+    UploadSessionValidationError,
 )
+
 
 class VFSService:
     """
@@ -127,36 +138,159 @@ class VFSService:
         return root
 
     @staticmethod
-    async def get_browse_data(db: AsyncSession, folder_id: str, owner_id: str):
+    async def get_browse_data(db: AsyncSession, folder_id: Optional[str], owner_id: str) -> dict:
         """
-        整合查詢：獲取資料夾內容、檔案內容與麵包屑。
+        獲取目錄瀏覽資料 (包含當前資料夾、子資料夾、子檔案與麵包屑，自帶 Redis 快取優化)。
         """
-        # 1. 獲取子資料夾
+        use_cache = bool(settings.VFS_DIRECTORY_CACHE_ENABLED and cache.redis_client)
+
+        # 1. 決定 target_id (如果 folder_id 是 None 則獲取/建立 Root)
+        target_id = folder_id
+        if folder_id is None:
+            root_cached_key = f"vfs:cache:root_folder_id:{owner_id}"
+            cached_root_id = None
+            if use_cache:
+                try:
+                    cached_root_id = await cache.redis_client.get(root_cached_key)
+                except Exception as e:
+                    print(f"[VFS Cache Error] Failed to get root cached ID: {e}")
+                    use_cache = False  # 發生異常時，本次執行關閉快取
+
+            if use_cache and cached_root_id:
+                target_id = cached_root_id
+            else:
+                root = await VFSService.get_or_create_root(db, owner_id)
+                target_id = root.id
+                if use_cache:
+                    try:
+                        await cache.redis_client.set(root_cached_key, target_id)
+                    except Exception as e:
+                        print(f"[VFS Cache Error] Failed to set root cached ID: {e}")
+                        use_cache = False
+        else:
+            target_id = folder_id
+
+        # 2. 嘗試讀取目錄瀏覽快取
+        cache_key = f"vfs:cache:browse:{owner_id}:{target_id}"
+        if use_cache:
+            try:
+                cached_json = await cache.redis_client.get(cache_key)
+                if cached_json:
+                    return json.loads(cached_json)
+            except Exception as e:
+                print(f"[VFS Cache Error] Failed to read browse cache: {e}")
+                use_cache = False
+
+        # 3. 快取未命中：讀取資料庫
+        current_folder = await VFSService.get_folder_by_id(db, target_id, owner_id)
+        if not current_folder:
+            # 如果是獲取 Root 資料夾但資料庫中不存在（可能資料庫重建或被刪除），則清理無效快取並重新建立
+            if folder_id is None:
+                if use_cache:
+                    try:
+                        root_cached_key = f"vfs:cache:root_folder_id:{owner_id}"
+                        await cache.redis_client.delete(root_cached_key)
+                    except Exception as e:
+                        print(f"[VFS Cache Error] Failed to delete invalid root cache: {e}")
+                        use_cache = False
+                root = await VFSService.get_or_create_root(db, owner_id)
+                target_id = root.id
+                if use_cache:
+                    try:
+                        await cache.redis_client.set(root_cached_key, target_id)
+                    except Exception as e:
+                        print(f"[VFS Cache Error] Failed to reset root cached ID: {e}")
+                        use_cache = False
+                current_folder = await VFSService.get_folder_by_id(db, target_id, owner_id)
+                if not current_folder:
+                    raise NodeNotFoundError("資料夾不存在或無權限存取")
+            else:
+                raise NodeNotFoundError("資料夾不存在或無權限存取")
+
+        # 獲取子資料夾
         folder_stmt = select(Folder).where(
-            Folder.parent_id == folder_id,
+            Folder.parent_id == target_id,
             Folder.owner_id == owner_id,
             Folder.is_deleted == False
         ).order_by(Folder.name.asc())
         folders_res = await db.execute(folder_stmt)
         folders = folders_res.scalars().all()
 
-        # 2. 獲取子檔案
+        # 獲取子檔案
         file_stmt = select(File).where(
-            File.folder_id == folder_id,
+            File.folder_id == target_id,
             File.owner_id == owner_id,
             File.is_deleted == False
         ).order_by(File.name.asc())
         files_res = await db.execute(file_stmt)
         files = files_res.scalars().all()
 
-        # 3. 獲取麵包屑
-        breadcrumbs = await VFSService.get_breadcrumbs(db, folder_id, owner_id)
+        # 獲取麵包屑
+        breadcrumbs = await VFSService.get_breadcrumbs(db, target_id, owner_id)
 
-        return {
-            "folders": folders,
-            "files": files,
-            "breadcrumbs": breadcrumbs
-        }
+        # 4. 序列化與快取寫入 (格式對齊 schemas.vfs.BrowseResponse)
+        response_model = BrowseResponse(
+            current_folder=current_folder,
+            breadcrumbs=breadcrumbs,
+            subfolders=folders,
+            files=files
+        )
+
+        response_dict = json.loads(response_model.model_dump_json())
+
+        if use_cache:
+            try:
+                await cache.redis_client.set(
+                    cache_key,
+                    response_model.model_dump_json(),
+                    ex=settings.VFS_DIRECTORY_CACHE_TTL
+                )
+            except Exception as e:
+                print(f"[VFS Cache Error] Failed to write browse cache: {e}")
+
+        return response_dict
+
+
+    @staticmethod
+    async def _clear_browse_cache(owner_id: str, folder_id: Optional[str] = None):
+        """
+        清理目錄瀏覽快取 (延遲雙刪除機制)。
+        使用 asyncio.create_task 進行非同步背景執行，以防阻塞主 API。
+        """
+        if not settings.VFS_DIRECTORY_CACHE_ENABLED or cache.redis_client is None:
+            return
+
+
+        async def delete_task():
+            key = f"vfs:cache:browse:{owner_id}:{folder_id}" if folder_id else None
+            pattern = f"vfs:cache:browse:{owner_id}:*"
+            # 第一刪：即時刪除
+            if folder_id:
+                await cache.redis_client.delete(key)
+            else:
+                cursor = 0
+                while True:
+                    cursor, keys = await cache.redis_client.scan(cursor, match=pattern, count=100)
+                    if keys:
+                        await cache.redis_client.delete(*keys)
+                    if cursor == 0:
+                        break
+
+            # 第二刪：延遲 1.0 秒刪除，排除讀寫併發髒數據
+            await asyncio.sleep(1.0)
+            if folder_id:
+                await cache.redis_client.delete(key)
+            else:
+                cursor = 0
+                while True:
+                    cursor, keys = await cache.redis_client.scan(cursor, match=pattern, count=100)
+                    if keys:
+                        await cache.redis_client.delete(*keys)
+                    if cursor == 0:
+                        break
+
+        # 註冊至背景執行
+        asyncio.create_task(delete_task())
 
     @staticmethod
     async def create_folder(db: AsyncSession, owner_id: str, name: str, parent_id: Optional[str] = None) -> Folder:
@@ -171,7 +305,6 @@ class VFSService:
             # 驗證父目錄是否存在且屬於該使用者
             parent = await VFSService.get_folder_by_id(db, parent_id, owner_id)
             if not parent:
-                from app.core.exceptions import NodeNotFoundError
                 raise NodeNotFoundError("父目錄不存在")
 
         # 2. 檢查同級命名衝突 (排除已邏輯刪除的資料夾)
@@ -183,7 +316,6 @@ class VFSService:
         )
         conflict_res = await db.execute(conflict_stmt)
         if conflict_res.scalars().first():
-            from app.core.exceptions import DuplicateNodeError
             raise DuplicateNodeError(f"目錄已存在名為 '{name}' 的資料夾")
 
         # 3. 建立並儲存
@@ -196,7 +328,11 @@ class VFSService:
         await db.commit()
         await db.refresh(new_folder)
 
+        # 4. 快取失效 (即時與非同步延遲刪除父目錄快取)
+        await VFSService._clear_browse_cache(owner_id, parent_id)
+
         return new_folder
+
 
     @staticmethod
     async def search_nodes(db: AsyncSession, owner_id: str, query: str):
@@ -231,8 +367,6 @@ class VFSService:
         """
         重新命名虛擬節點 (檔案或資料夾)。
         """
-        from app.core.exceptions import NodeNotFoundError, DuplicateNodeError
-
         # 1. 獲取目標節點並驗證權限
         if node_type == "folder":
             node = await VFSService.get_folder_by_id(db, node_id, owner_id)
@@ -261,7 +395,7 @@ class VFSService:
                 File.id != node_id
             )
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的節點類型")
+            raise BaseBusinessException("無效的節點類型", status_code=400)
 
         # 2. 執行衝突檢查
         conflict_res = await db.execute(conflict_stmt)
@@ -272,6 +406,13 @@ class VFSService:
         node.name = new_name
         await db.commit()
         await db.refresh(node)
+
+        # 4. 快取失效
+        if node_type == "folder":
+            await VFSService._clear_browse_cache(owner_id, node.parent_id)
+            await VFSService._clear_browse_cache(owner_id, node.id)
+        else:
+            await VFSService._clear_browse_cache(owner_id, node.folder_id)
         
         return node
 
@@ -281,8 +422,6 @@ class VFSService:
         搬移虛擬節點 (檔案或資料夾) 到新的目錄。
         包含：防循環檢查、衝突檢查、權限驗證。
         """
-        from app.core.exceptions import NodeNotFoundError, DuplicateNodeError, BaseBusinessException
-
         # 1. 獲取目標父目錄
         if target_parent_id is None:
             root = await VFSService.get_or_create_root(db, owner_id)
@@ -351,6 +490,9 @@ class VFSService:
             
         await db.commit()
         await db.refresh(node)
+
+        # 5. 快取失效 (搬移直接全目錄失效以防子孫目錄麵包屑不一致)
+        await VFSService._clear_browse_cache(owner_id, None)
         
         return node
 
@@ -359,9 +501,6 @@ class VFSService:
         """
         邏輯刪除節點。若是資料夾，則遞迴標記所有子項。
         """
-        from datetime import datetime, timezone
-        from app.core.exceptions import NodeNotFoundError, BaseBusinessException
-
         now = datetime.now(timezone.utc)
 
         if node_type == "folder":
@@ -407,12 +546,20 @@ class VFSService:
             if not node:
                 raise NodeNotFoundError("檔案不存在")
             
+            parent_folder_id = node.folder_id
             node.is_deleted = True
             node.deleted_at = now
         else:
             raise BaseBusinessException("無效的節點類型", status_code=400)
 
         await db.commit()
+
+        # 5. 快取失效
+        if node_type == "folder":
+            await VFSService._clear_browse_cache(owner_id, None)
+        else:
+            await VFSService._clear_browse_cache(owner_id, parent_folder_id)
+
         return {"message": "刪除成功", "deleted_nodes_count": "many" if node_type == "folder" else 1}
 
     @staticmethod
@@ -427,8 +574,6 @@ class VFSService:
         """
         初始化分塊上傳會話 (Step 4.3 第一階段)。
         """
-        from app.core.exceptions import NodeNotFoundError
-
         # 1. 決定目標目錄並驗證權限
         if target_folder_id is None:
             root = await VFSService.get_or_create_root(db, owner_id)
@@ -447,7 +592,6 @@ class VFSService:
         )
         conflict_file_res = await db.execute(conflict_file_stmt)
         if conflict_file_res.scalars().first():
-            from app.core.exceptions import DuplicateNodeError
             raise DuplicateNodeError(f"目標目錄下已存在同名檔案 '{filename}'")
 
         # 3. 前置衝突防禦：檢查是否有針對該資料夾同名檔案的活躍上傳會話 (UploadSession)
@@ -458,7 +602,6 @@ class VFSService:
         )
         conflict_session_res = await db.execute(conflict_session_stmt)
         if conflict_session_res.scalars().first():
-            from app.core.exceptions import BaseBusinessException
             raise BaseBusinessException(f"同名檔案 '{filename}' 的上傳會話已在進行中，請勿重複上傳", status_code=400)
 
         # 4. 建立上傳會話
@@ -485,8 +628,6 @@ class VFSService:
         """
         上傳單個分塊，包含 IDOR 擁有者校驗與索引校驗 (Step 4.3 第二階段)。
         """
-        from app.core.exceptions import UploadSessionNotFoundError, UploadSessionValidationError
-
         # 1. 查詢上傳會話
         stmt = select(UploadSession).where(UploadSession.id == upload_id)
         result = await db.execute(stmt)
@@ -497,7 +638,6 @@ class VFSService:
 
         # 2. IDOR 安全防禦：確保上傳者是會話擁有人
         if session.owner_id != owner_id:
-            from app.core.exceptions import PermissionDeniedError
             raise PermissionDeniedError("無權存取此上傳會話")
 
         # 3. 校驗分塊索引合法性
@@ -516,9 +656,6 @@ class VFSService:
         """
         物理合併暫存碎片、進行雜湊校驗、在資料庫完成虛擬「入籍」，最後清理暫存區 (Step 4.3 第三階段)。
         """
-        from mimetypes import guess_type
-        from app.core.exceptions import PermissionDeniedError, UploadSessionNotFoundError, UploadSessionValidationError
-
         # 1. 獲取會話並強校驗擁有者權限
         stmt = select(UploadSession).where(UploadSession.id == upload_id)
         result = await db.execute(stmt)
@@ -569,7 +706,6 @@ class VFSService:
         if conflict_res.scalars().first():
             # 有同名檔案，物理刪除剛合併的正式檔案並拋出異常
             await filesystem.delete_file(merged_info["storage_name"])
-            from app.core.exceptions import DuplicateNodeError
             raise DuplicateNodeError(f"目標目錄下已存在名為 '{session.filename}' 的檔案")
 
         # 推測檔案 MIME 類型
@@ -594,6 +730,9 @@ class VFSService:
         # 清除暫存目錄碎片
         await filesystem.cleanup_temp(upload_id)
 
+        # 7. 清理快取
+        await VFSService._clear_browse_cache(owner_id, new_file.folder_id)
+
         return new_file
 
     @staticmethod
@@ -605,7 +744,6 @@ class VFSService:
         """
         獲取分塊上傳會話的進度狀態與缺失分塊。
         """
-        from app.core.exceptions import UploadSessionNotFoundError
 
         # 1. 查詢上傳會話
         stmt = select(UploadSession).where(UploadSession.id == upload_id)
@@ -646,7 +784,6 @@ class VFSService:
         """
         主動取消上傳會話，清除資料庫紀錄並物理刪除磁碟暫存分塊目錄。
         """
-        from app.core.exceptions import UploadSessionNotFoundError
 
         # 1. 查詢上傳會話
         stmt = select(UploadSession).where(UploadSession.id == upload_id)
@@ -690,7 +827,9 @@ class VFSService:
         user_download_key = f"vfs:ticket:user_download:{owner_id}:{file_id}"
         existing_ticket = await redis_client.get(user_download_key)
         if existing_ticket:
-            return existing_ticket
+            # 防範雙向映射過期時間差或內存驅逐不一致，確認憑證主體確實存在
+            if await redis_client.exists(f"vfs:ticket:download:{existing_ticket}"):
+                return existing_ticket
 
         # 3. 生成新的 Ticket UUID 與憑證資料
         ticket_uuid = str(uuid.uuid4())

@@ -81,6 +81,12 @@
 ## Phase 7: 系統部分強化與優化
 - [x] 1. **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，缺乏嚴格的一次性限制，有利暴力破解。（已完成後端與 Redis 的防重放快取驗證鎖）
 - [ ] 2. **目錄結構快取 (Directory Cache)**: 利用 Redis 實作虛擬目錄架構快取，大幅降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。
+  - [ ] 2.1 改造 `vfs_service.py` 中的 `get_browse_data` 函數（包含自動修復 Root 鍵失效導致的永久 404 問題，與快取狀態整合優化）。
+  - [ ] 2.2 於 `vfs_service.py` 建立私有 `_clear_browse_cache` 雙刪函數（安全宣告局部變數）。
+  - [ ] 2.3 改造 `create_folder`、`rename_node`、`move_node`、`delete_node`、`finalize_upload` 呼叫快取清除（包含修復 `delete_node` 在 commit 後讀取已過期屬性的崩潰 Bug）。
+  - [ ] 2.4 簡化 `api/vfs.py` 裡的 `/ls` 路由以直接調用 `get_browse_data`。
+  - [ ] 2.5 修正 `create_download_ticket` 雙向映射過期不一致導致的下載鎖死問題。
+
 
 ---
 
@@ -101,3 +107,19 @@
 - [x] 8. 修改 [storage.py](file:///d:/Project/file-explorer/server/app/filesystem/storage.py) 套用檔案合併讀取緩衝區大小設定。
 - [x] 9. 修改 [jwt.py](file:///d:/Project/file-explorer/server/app/security/jwt.py) 套用 2FA 臨時驗證權杖有效期限。
 - [x] 10. 本地前後端測試與執行驗證。
+
+---
+
+## Phase 9: 系統長期架構重構與優化建議 [待規劃]
+- [ ] 1. **重構 Redis 連線管理為 OOP 單例模式**：
+  * **背景原因**：目前 `app/core/cache.py` 採用面向過程的 `global redis_client` 全域變數設計，導致在其他模組頂部直接 import 時拿到 `None`。
+  * **優化方案**：重構為 `RedisManager` 單例類別，透過 `RedisManager.get_instance().client` 動態獲取實例，消除全域變數與時間序 Bug。
+- [ ] 2. **重構儲存層與暫存區為 OOP 介面/多型設計**：
+  * **背景原因**：目前 `app/filesystem/storage.py` 與 `chunks.py` 皆為模組層級的獨立函數，與實體磁碟緊密耦合，難以抽換儲存媒介（如改用 AWS S3 / GCP GCS）。
+  * **優化方案**：實作 `BaseStorage(ABC)` 抽象儲存介面，並由 `LocalDiskStorage(BaseStorage)` 承接磁碟讀寫實作。使 `VFSService` 對接抽象介面，提升擴充性。
+- [ ] 3. **重構安全與認證輔助模組為物件管理器**：
+  * **背景原因**：`hasher.py`, `jwt.py`, `otp.py` 均為面向過程函數，並直接依賴全域設定，使單元測試難以更換金鑰或參數。
+  * **優化方案**：封裝為 `PasswordHasher`、`JWTTokenManager` 與 `TwoFactorAuthManager` 物件，在建構子中加載相關配置，降低耦合度。
+- [ ] 4. **重構服務層 (Service Layer) 靜態類別為實例化物件與依賴注入**：
+  * **背景原因**：目前 `VFSService` 與 `AuthService` 所有方法均為 `@staticmethod`，只是純命名空間包裝，無法在物件層級注入資料庫與快取管理器。
+  * **優化方案**：將方法改為實例方法，並透過建構子注入 `db` 會話與 `cache` 管理器，為後續導入更嚴謹的依賴注入（DI）框架打下基礎。
