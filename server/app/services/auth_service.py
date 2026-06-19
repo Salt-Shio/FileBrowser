@@ -15,15 +15,17 @@ class AuthService:
     """
     身分驗證業務邏輯層
     """
+    def __init__(self, db: AsyncSession, redis_client):
+        self.db = db
+        self.redis_client = redis_client
 
-    @staticmethod
-    async def register(db: AsyncSession, username: str, password: str):
+    async def register(self, username: str, password: str):
         """
         註冊新使用者
         """
         # 1. 檢查帳號是否已存在
         # TODO: 這裡後續可能會補上白名單機制，畢竟是單人專用
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         existing_user = result.scalars().first()
         if existing_user:
             from app.core.exceptions import BaseBusinessException
@@ -39,19 +41,18 @@ class AuthService:
             is_totp_enabled=False,
             totp_secret=None
         )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
         
         return user
 
-    @staticmethod
-    async def login(db: AsyncSession, username: str, password: str):
+    async def login(self, username: str, password: str):
         """
         第一階段：密碼驗證
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         
         # 2. 驗證密碼
@@ -80,8 +81,7 @@ class AuthService:
                 "username": user.username
             }
 
-    @staticmethod
-    async def verify_2fa(db: AsyncSession, redis_client, two_fa_token: str, otp_code: str):
+    async def verify_2fa(self, two_fa_token: str, otp_code: str):
         """
         第二階段：2FA 驗證與簽發 JWT
         """
@@ -95,13 +95,13 @@ class AuthService:
 
         # 2. Replay 防禦：檢查該使用者的驗證碼在此週期內是否已被使用過
         replay_key = f"auth:lock:2fa_replay:{username}:{otp_code}"
-        is_used = await redis_client.get(replay_key)
+        is_used = await self.redis_client.get(replay_key)
         if is_used:
             from app.core.exceptions import AuthenticationError
             raise AuthenticationError("2FA 驗證碼已被使用，請使用新生成的驗證碼")
 
         # 3. 尋找使用者
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         
         if not user:
@@ -115,7 +115,7 @@ class AuthService:
         
         # 5. 驗證成功後，標記該代碼在此週期內已被使用，防止重放攻擊
         from app.core.config import settings
-        await redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
+        await self.redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
 
         # 6. 簽發正式 JWT
         access_token = jwt.create_access_token(data={"sub": user.username})
@@ -126,13 +126,12 @@ class AuthService:
             "username": user.username
         }
 
-    @staticmethod
-    async def generate_2fa_setup(db: AsyncSession, username: str):
+    async def generate_2fa_setup(self, username: str):
         """
         為已登入的使用者產生新的 2FA 安全金鑰與 URI
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         if not user:
             from app.core.exceptions import NodeNotFoundError
@@ -148,8 +147,8 @@ class AuthService:
         # 3. 暫存至資料庫 (is_totp_enabled 保持 False，防範鎖定)
         user.totp_secret = secret
         user.is_totp_enabled = False
-        await db.commit()
-        await db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
         
         # 4. 取得 URI
         uri = otp.get_provisioning_uri(user.username, secret)
@@ -159,13 +158,12 @@ class AuthService:
             "provisioning_uri": uri
         }
 
-    @staticmethod
-    async def enable_2fa(db: AsyncSession, redis_client, username: str, otp_code: str):
+    async def enable_2fa(self, username: str, otp_code: str):
         """
         驗證首次 2FA 代碼，正式啟用 2FA 功能
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         if not user:
             from app.core.exceptions import NodeNotFoundError
@@ -177,7 +175,7 @@ class AuthService:
 
         # 2. Replay 防禦
         replay_key = f"auth:lock:2fa_replay:{username}:{otp_code}"
-        is_used = await redis_client.get(replay_key)
+        is_used = await self.redis_client.get(replay_key)
         if is_used:
             from app.core.exceptions import AuthenticationError
             raise AuthenticationError("2FA 驗證碼已被使用，請使用新生成的驗證碼")
@@ -189,22 +187,21 @@ class AuthService:
 
         # 4. 驗證成功，標記代碼已被使用
         from app.core.config import settings
-        await redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
+        await self.redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
 
         # 5. 正式開啟 2FA 開關
         user.is_totp_enabled = True
-        await db.commit()
-        await db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
         
         return {"message": "2FA 啟用成功"}
 
-    @staticmethod
-    async def disable_2fa(db: AsyncSession, redis_client, username: str, otp_code: str):
+    async def disable_2fa(self, username: str, otp_code: str):
         """
         驗證當前 2FA 代碼，停用 2FA 功能
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         if not user:
             from app.core.exceptions import NodeNotFoundError
@@ -216,7 +213,7 @@ class AuthService:
 
         # 2. Replay 防禦
         replay_key = f"auth:lock:2fa_replay:{username}:{otp_code}"
-        is_used = await redis_client.get(replay_key)
+        is_used = await self.redis_client.get(replay_key)
         if is_used:
             from app.core.exceptions import AuthenticationError
             raise AuthenticationError("2FA 驗證碼已被使用，請使用新生成的驗證碼")
@@ -228,23 +225,22 @@ class AuthService:
 
         # 4. 驗證成功，標記代碼已被使用
         from app.core.config import settings
-        await redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
+        await self.redis_client.set(replay_key, "1", ex=settings.TWO_FA_REPLAY_TTL)
 
         # 5. 停用 2FA 並清除金鑰
         user.is_totp_enabled = False
         user.totp_secret = None
-        await db.commit()
-        await db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
         
         return {"message": "2FA 停用成功"}
 
-    @staticmethod
-    async def change_password(db: AsyncSession, username: str, old_password: str, new_password: str):
+    async def change_password(self, username: str, old_password: str, new_password: str):
         """
         修改使用者密碼
         """
         # 1. 尋找使用者
-        result = await db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         if not user:
             from app.core.exceptions import NodeNotFoundError
@@ -257,7 +253,7 @@ class AuthService:
 
         # 3. 更新密碼
         user.hashed_password = hasher.get_password_hash(new_password)
-        await db.commit()
-        await db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
 
         return {"message": "密碼修改成功"}

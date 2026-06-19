@@ -37,6 +37,7 @@
 | 類型 | 範例 | 職責 |
 | :--- | :--- | :--- |
 | **資源提供** | `get_db` | 負責提供資料庫會話 (Session)，並在結束後自動關閉。 |
+| **服務實例化 (DI)** | `get_vfs_service` | 將 `db`, `redis_client`, `storage` 等基礎資源組裝後，注入並回傳 Service 物件。 |
 | **安全守衛** | `get_current_user` | 驗證 Token 合法性，並直接從資料庫抓出 User 物件。 |
 | **邏輯檢查** | `get_current_active_user` | 依賴於 `get_current_user`，進一步檢查帳號是否被停權。 |
 | **參數過濾** | `get_pagination` | 統一處理分頁參數 (skip, limit)。 |

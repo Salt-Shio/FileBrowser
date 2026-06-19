@@ -119,11 +119,11 @@
   * **目標**：實作 `BaseStorage(ABC)` 與 `LocalDiskStorage`，取代 `storage.py` 與 `chunks.py`。
   * **策略**：在 `__init__.py` 設定暫時的 `storage_instance` 以相容舊程式碼。
 
-- [ ] 2. **🟡 [中高優先] Phase 9 (Part 2) 重構 Redis 連線管理為 OOP 單例**：
+- [x] 2. **🟡 [中高優先] Phase 9 (Part 2) 重構 Redis 連線管理為 OOP 單例**：
   * **背景原因**：`app/core/cache.py` 定義了 `global redis_client`，若其他模組在 `init_redis()` 執行前就 import 會拿到 `None`，容易引發「初始化時間差」的潛在崩潰。
   * **優化方案**：重構為 `RedisManager` 單例類別，確保呼叫時保證連線池已被正確初始化，消滅全域變數問題。
 
-- [ ] 3. **🔴 [極高優先] Phase 9 (Part 3) 重構服務層 (Service Layer) 為實例化物件與依賴注入 (DI)**：
+- [x] 3. **🔴 [極高優先] Phase 9 (Part 3) 重構服務層 (Service Layer) 為實例化物件與依賴注入 (DI)**：
   * **目標**：將靜態方法改為實例方法，並搭配 FastAPI 的 `Depends` 機制自動注入相依資源。
   * **⚠️ 重要提醒**：實作完成後，務必**拔除** Part 1 留在 `__init__.py` 的全域暫時變數與代理函數！
 

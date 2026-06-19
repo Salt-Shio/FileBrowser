@@ -75,3 +75,31 @@ async def get_redis() -> AsyncGenerator[redis.Redis, None]:
             detail="Redis service is unavailable."
         )
     yield client
+
+async def get_storage():
+    """
+    依賴注入用：獲取檔案儲存策略實例
+    """
+    from app.filesystem import LocalDiskStorage
+    yield LocalDiskStorage()
+
+async def get_vfs_service(
+    db: AsyncSession = Depends(get_db),
+    storage = Depends(get_storage),
+    redis_client: redis.Redis = Depends(get_redis)
+):
+    """
+    依賴注入用：獲取 VFSService 實例，自動裝配所需的 db, storage 與 redis
+    """
+    from app.services.vfs_service import VFSService
+    return VFSService(db=db, storage=storage, redis_client=redis_client)
+
+async def get_auth_service(
+    db: AsyncSession = Depends(get_db),
+    redis_client: redis.Redis = Depends(get_redis)
+):
+    """
+    依賴注入用：獲取 AuthService 實例，自動裝配所需的 db 與 redis
+    """
+    from app.services.auth_service import AuthService
+    return AuthService(db=db, redis_client=redis_client)

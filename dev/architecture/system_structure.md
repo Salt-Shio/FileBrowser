@@ -23,9 +23,10 @@ graph TD
         AUTH_SVC["services/auth_service.py (身分業務)"]
     end
 
-    subgraph Layer_4 [基礎層 - Security & Data]
+    subgraph Layer_4 [基礎層 - Security, Data & Storage]
         DB[("database.py / DB")]
         REDIS[("core/cache.py / Redis")]
+        FILESYSTEM["filesystem/ (實體存儲策略)"]
         MODELS["models/ (資料結構)"]
         SCHEMAS["schemas/ (Pydantic)"]
         JWT["security/jwt.py"]
@@ -44,24 +45,20 @@ graph TD
     API_INIT --> VFS_API
     API_INIT --> AUTH_API
 
-    %% 業務與依賴
+    %% 業務與依賴 (DI 注入流程)
     VFS_API --> DEPS
-    VFS_API --> VFS_SVC
     AUTH_API --> DEPS
-    AUTH_API --> AUTH_SVC
+    DEPS -.->|Instantiate| VFS_SVC
+    DEPS -.->|Instantiate| AUTH_SVC
 
-    %% 執行層調用基礎層 (排列解開交錯)
+    %% 執行層調用基礎層 (由 DEPS 組裝注入)
     DEPS --> DB
     DEPS --> REDIS
-    DEPS --> MODELS
-    DEPS --> JWT
+    DEPS --> FILESYSTEM
 
-    VFS_SVC --> DB
-    VFS_SVC --> REDIS
     VFS_SVC --> MODELS
     VFS_SVC --> JWT
 
-    AUTH_SVC --> DB
     AUTH_SVC --> MODELS
     AUTH_SVC --> JWT
     AUTH_SVC --> HASHER
@@ -69,6 +66,7 @@ graph TD
 
     %% 背景 GC 哨兵調用
     GC_SENTINEL --> DB
+    GC_SENTINEL --> FILESYSTEM
 
     %% Schema 調用
     VFS_API -.-> SCHEMAS
@@ -78,9 +76,11 @@ graph TD
     style MAIN fill:#FF9800,stroke:#333,stroke-width:4px,color:#000
     style GC_SENTINEL fill:#FF9800,stroke:#333,stroke-width:2px,color:#000
     style API_INIT fill:#2196F3,stroke:#333,stroke-width:2px,color:#fff
+    style DEPS fill:#E1BEE7,stroke:#333,stroke-width:2px,color:#000
     style AUTH_SVC fill:#C8E6C9,stroke:#333,stroke-width:2px,color:#000
     style VFS_SVC fill:#C8E6C9,stroke:#333,stroke-width:2px,color:#000
     style DB fill:#ECEFF1,stroke:#333,color:#000
+    style FILESYSTEM fill:#FFF9C4,stroke:#333,color:#000
 ```
 
 ---

@@ -207,7 +207,11 @@ docker-compose up --build -d
 - **API Layer (高層/服務生)**：負責將邏輯異常 **「翻譯」** 成適合當前通訊協定的格式（如 `HTTP 404`）。
 - **優點**：確保 Service Layer 的通用性，使其能被 CLI、腳本或背景任務複用，而不依賴於特定的 Web 框架 (FastAPI)。
 
-### 2. Fail-Fast 原則
+### 2. 服務依賴注入 (Dependency Injection & Strategy Pattern)
+- **Storage 抽象化**：檔案存取底層實作了 `BaseStorage` 介面，並以 `LocalDiskStorage` 具現化，不僅徹底解耦了 VFS 業務邏輯與實體磁碟操作，未來擴充 S3 支援也只需抽換注入即可。
+- **Service DI 化**：全面廢棄 `@staticmethod`，採用實例化 Service。透過 FastAPI 的 `Depends` 統一於 `deps.py` 組裝 `db`、`redis_client` 與 `storage` 後再注入 Service，消滅了全域變數引發的狀態污染與依賴地獄。
+
+### 3. Fail-Fast 原則
 - **偵測 (Detection)**：錯誤偵測應離「成因」與「實作地點」越近越好，以便於快速定位問題。
 - **處理 (Handling)**：錯誤處置應拉遠到高層決定，以保持系統整體的彈性與策略一致性。
 

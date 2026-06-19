@@ -7,12 +7,11 @@
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, Form, File, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.api.responses import MonitoredFileResponse
 from app.services.vfs_service import VFSService
-from app import schemas, filesystem
+from app import schemas
 from app.models import User
 from app.core.exceptions import NodeNotFoundError
 
@@ -21,37 +20,36 @@ router = APIRouter()
 @router.get("/ls", response_model=schemas.vfs.BrowseResponse)
 async def list_directory(
     folder_id: Optional[str] = Query(None, description="要瀏覽的資料夾 UUID，若為空則顯示根目錄"),
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     獲取指定目錄的內容，包含子資料夾、檔案與導航麵包屑。
     """
-    return await VFSService.get_browse_data(db, folder_id, current_user.id)
+    return await service.get_browse_data(folder_id, current_user.id)
 
 
 @router.get("/search", response_model=schemas.vfs.SearchResponse)
 async def search_nodes(
     q: str = Query(..., min_length=1, description="搜尋關鍵字"),
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     模糊搜尋使用者擁有的所有資料夾與檔案。
     """
-    return await VFSService.search_nodes(db, current_user.id, q)
+    return await service.search_nodes(current_user.id, q)
 
 @router.post("/mkdir", response_model=schemas.vfs.FolderResponse, status_code=status.HTTP_201_CREATED)
 async def create_folder(
     data: schemas.vfs.FolderCreate,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     建立新的虛擬資料夾。
     """
-    return await VFSService.create_folder(
-        db, 
+    return await service.create_folder(
         current_user.id, 
         data.name, 
         data.parent_id
@@ -60,14 +58,13 @@ async def create_folder(
 @router.post("/rename")
 async def rename_node(
     data: schemas.vfs.NodeRenameRequest,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     重新命名資料夾或檔案。
     """
-    return await VFSService.rename_node(
-        db,
+    return await service.rename_node(
         current_user.id,
         data.node_id,
         data.node_type,
@@ -77,14 +74,13 @@ async def rename_node(
 @router.post("/move")
 async def move_node(
     data: schemas.vfs.NodeMoveRequest,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     搬移資料夾或檔案到指定目錄。
     """
-    return await VFSService.move_node(
-        db,
+    return await service.move_node(
         current_user.id,
         data.node_id,
         data.node_type,
@@ -94,14 +90,13 @@ async def move_node(
 @router.post("/delete")
 async def delete_node(
     data: schemas.vfs.NodeDeleteRequest,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     邏輯刪除資料夾或檔案 (Explicit Action)。
     """
-    return await VFSService.delete_node(
-        db,
+    return await service.delete_node(
         current_user.id,
         data.node_id,
         data.node_type
@@ -111,14 +106,13 @@ async def delete_node(
 @router.post("/upload/init", response_model=schemas.vfs.UploadInitResponse, status_code=status.HTTP_201_CREATED)
 async def init_upload(
     data: schemas.vfs.UploadInitRequest,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     初始化分塊上傳會話 (Step 4.3 第一階段)。
     """
-    session = await VFSService.init_upload(
-        db=db,
+    session = await service.init_upload(
         filename=data.filename,
         total_chunks=data.total_chunks,
         expected_hash=data.expected_hash,
@@ -137,7 +131,7 @@ async def upload_chunk(
     upload_id: str = Form(..., description="上傳會話 UUID"),
     chunk_index: int = Form(..., description="分塊索引號 (0 起始)"),
     file: UploadFile = File(..., description="分塊二進制數據"),
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
@@ -145,8 +139,7 @@ async def upload_chunk(
     """
     # 讀取二進制內容
     chunk_data = await file.read()
-    await VFSService.upload_chunk(
-        db=db,
+    await service.upload_chunk(
         upload_id=upload_id,
         chunk_index=chunk_index,
         chunk_data=chunk_data,
@@ -161,14 +154,13 @@ async def upload_chunk(
 @router.get("/upload/status/{upload_id}", response_model=schemas.vfs.UploadStatusResponse)
 async def get_upload_status(
     upload_id: str,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ) -> schemas.vfs.UploadStatusResponse:
     """
     查詢分塊上傳進度，返回已成功上傳的分塊列表與缺失的分塊列表。
     """
-    return await VFSService.get_upload_status(
-        db=db,
+    return await service.get_upload_status(
         upload_id=upload_id,
         owner_id=current_user.id
     )
@@ -177,14 +169,13 @@ async def get_upload_status(
 @router.post("/upload/cancel", response_model=schemas.vfs.UploadCancelResponse)
 async def cancel_upload(
     data: schemas.vfs.UploadCancelRequest,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ) -> schemas.vfs.UploadCancelResponse:
     """
     主動取消上傳會話，立即清除所有資料庫紀錄與磁碟暫存分塊碎片。
     """
-    return await VFSService.cancel_upload(
-        db=db,
+    return await service.cancel_upload(
         upload_id=data.upload_id,
         owner_id=current_user.id
     )
@@ -193,14 +184,13 @@ async def cancel_upload(
 @router.post("/upload/finalize", response_model=schemas.vfs.FileResponse)
 async def finalize_upload(
     data: schemas.vfs.UploadFinalizeRequest,
-    db: AsyncSession = Depends(deps.get_db),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     物理合併分塊、校驗 Hash、虛擬入籍、並清理會話與碎片 (Step 4.3 第三階段)。
     """
-    return await VFSService.finalize_upload(
-        db=db,
+    return await service.finalize_upload(
         upload_id=data.upload_id,
         owner_id=current_user.id
     )
@@ -209,17 +199,14 @@ async def finalize_upload(
 @router.post("/download/ticket/{file_id}")
 async def get_download_ticket(
     file_id: str,
-    db: AsyncSession = Depends(deps.get_db),
-    redis_client = Depends(deps.get_redis),
+    service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ):
     """
     為指定檔案生成一個 30 秒有效的臨時下載 Ticket。
     30 秒內對同一使用者與同一檔案重複申請，回傳相同的 Ticket。
     """
-    ticket = await VFSService.create_download_ticket(
-        db=db,
-        redis_client=redis_client,
+    ticket = await service.create_download_ticket(
         file_id=file_id,
         owner_id=current_user.id
     )
@@ -230,23 +217,20 @@ async def get_download_ticket(
 async def download_file(
     file_id: str,
     ticket: str = Query(..., description="臨時下載憑證"),
-    db: AsyncSession = Depends(deps.get_db),
-    redis_client = Depends(deps.get_redis)
+    service: VFSService = Depends(deps.get_vfs_service)
 ) -> MonitoredFileResponse:
     """
     使用臨時憑證進行下載，限制 30 秒內最多發起 4 次請求。
     不需要 JWT 驗證，憑證本身即為授權依據。
     """
     # 1. 呼叫服務層進行憑證校驗、連線數判定與檔案擁有權檢查
-    file_obj = await VFSService.verify_and_prepare_download(
-        db=db,
-        redis_client=redis_client,
+    file_obj = await service.verify_and_prepare_download(
         file_id=file_id,
         ticket=ticket
     )
 
     # 2. 取得絕對實體路徑
-    physical_path = filesystem.get_full_path(file_obj.storage_path)
+    physical_path = service.storage.get_full_path(file_obj.storage_path)
 
     # 3. 封裝快取校驗標頭
     headers = {
@@ -260,5 +244,3 @@ async def download_file(
         media_type=file_obj.mime_type or "application/octet-stream",
         headers=headers
     )
-
-
