@@ -75,17 +75,18 @@
     - *優點*：物理寫入量減半，最後 Finalize 幾乎秒開，且 Windows 目錄中仍可看見實體檔案。
     - *缺點*：後端上傳 Session 狀態探測（斷點續傳）必須重構，工程改動規模較大。
 - [ ] 11. [架構演進/長期優化] 將分塊上傳機制改為「邊傳邊寫 / 隨機寫入 (On-the-fly Random Access Write)」，以消除結算合併（Finalize）階段的大檔案物理合併 I/O 延遲，優化伺服器 SSD 寫入壽命。
+  - 必須先衡量優缺點才決定是否使用
 
 ---
 
-## Phase 7: 系統部分強化與優化
+## Phase 7: 系統部分強化與優化 [已完成 100%]
 - [x] 1. **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，缺乏嚴格的一次性限制，有利暴力破解。（已完成後端與 Redis 的防重放快取驗證鎖）
-- [ ] 2. **目錄結構快取 (Directory Cache)**: 利用 Redis 實作虛擬目錄架構快取，大幅降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。
-  - [ ] 2.1 改造 `vfs_service.py` 中的 `get_browse_data` 函數（包含自動修復 Root 鍵失效導致的永久 404 問題，與快取狀態整合優化）。
-  - [ ] 2.2 於 `vfs_service.py` 建立私有 `_clear_browse_cache` 雙刪函數（安全宣告局部變數）。
-  - [ ] 2.3 改造 `create_folder`、`rename_node`、`move_node`、`delete_node`、`finalize_upload` 呼叫快取清除（包含修復 `delete_node` 在 commit 後讀取已過期屬性的崩潰 Bug）。
-  - [ ] 2.4 簡化 `api/vfs.py` 裡的 `/ls` 路由以直接調用 `get_browse_data`。
-  - [ ] 2.5 修正 `create_download_ticket` 雙向映射過期不一致導致的下載鎖死問題。
+- [x] 2. **目錄結構快取 (Directory Cache)**: 利用 Redis 實作虛擬目錄架構快取，大幅降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。
+  - [x] 2.1 改造 `vfs_service.py` 中的 `get_browse_data` 函數（包含自動修復 Root 鍵失效導致的永久 404 問題，與快取狀態整合優化）。
+  - [x] 2.2 於 `vfs_service.py` 建立私有 `_clear_browse_cache` 雙刪函數（安全宣告局部變數）。
+  - [x] 2.3 改造 `create_folder`、`rename_node`、`move_node`、`delete_node`、`finalize_upload` 呼叫快取清除（包含修復 `delete_node` 在 commit 後讀取已過期屬性的崩潰 Bug）。
+  - [x] 2.4 簡化 `api/vfs.py` 裡的 `/ls` 路由以直接調用 `get_browse_data`。
+  - [x] 2.5 修正 `create_download_ticket` 雙向映射過期不一致導致的下載鎖死問題。
 
 
 ---
@@ -96,7 +97,7 @@
 
 ---
 
-## Phase 8: 參數與環境變數抽取 (設定分離版) [已完成 90%]
+## Phase 8: 參數與環境變數抽取 (設定分離版) [已完成 100%]
 - [x] 1. 於專案根目錄建立新環境設定檔 `.env` 存放前端代理設定。
 - [x] 2. 修改 [vite.config.ts](file:///d:/Project/file-explorer/vite.config.ts) 引入 `loadEnv` 讀取前端代理變數。
 - [x] 3. 於後端 [server/.env](file:///d:/Project/file-explorer/server/.env) 新增伺服器與 Redis 快取最大連線設定、下載憑證 TTL、限流次數、合併緩衝、2FA 權杖有效期限等變數。
@@ -111,15 +112,20 @@
 ---
 
 ## Phase 9: 系統長期架構重構與優化建議 [待規劃]
-- [ ] 1. **重構 Redis 連線管理為 OOP 單例模式**：
-  * **背景原因**：目前 `app/core/cache.py` 採用面向過程的 `global redis_client` 全域變數設計，導致在其他模組頂部直接 import 時拿到 `None`。
-  * **優化方案**：重構為 `RedisManager` 單例類別，透過 `RedisManager.get_instance().client` 動態獲取實例，消除全域變數與時間序 Bug。
-- [ ] 2. **重構儲存層與暫存區為 OOP 介面/多型設計**：
-  * **背景原因**：目前 `app/filesystem/storage.py` 與 `chunks.py` 皆為模組層級的獨立函數，與實體磁碟緊密耦合，難以抽換儲存媒介（如改用 AWS S3 / GCP GCS）。
-  * **優化方案**：實作 `BaseStorage(ABC)` 抽象儲存介面，並由 `LocalDiskStorage(BaseStorage)` 承接磁碟讀寫實作。使 `VFSService` 對接抽象介面，提升擴充性。
-- [ ] 3. **重構安全與認證輔助模組為物件管理器**：
-  * **背景原因**：`hasher.py`, `jwt.py`, `otp.py` 均為面向過程函數，並直接依賴全域設定，使單元測試難以更換金鑰或參數。
-  * **優化方案**：封裝為 `PasswordHasher`、`JWTTokenManager` 與 `TwoFactorAuthManager` 物件，在建構子中加載相關配置，降低耦合度。
-- [ ] 4. **重構服務層 (Service Layer) 靜態類別為實例化物件與依賴注入**：
-  * **背景原因**：目前 `VFSService` 與 `AuthService` 所有方法均為 `@staticmethod`，只是純命名空間包裝，無法在物件層級注入資料庫與快取管理器。
-  * **優化方案**：將方法改為實例方法，並透過建構子注入 `db` 會話與 `cache` 管理器，為後續導入更嚴謹的依賴注入（DI）框架打下基礎。
+
+根據架構評估，以下為各模組改用 OOP 與依賴注入 (DI) 的必要性與優先級排序：
+
+- [ ] 1. **🔴 [極高優先] Phase 9 (Part 1) 重構儲存層與暫存區為 OOP 介面/多型設計 (Strategy Pattern)**：
+  * **目標**：實作 `BaseStorage(ABC)` 與 `LocalDiskStorage`，取代 `storage.py` 與 `chunks.py`。
+  * **策略**：在 `__init__.py` 設定暫時的 `storage_instance` 以相容舊程式碼。
+- [ ] 2. **🔴 [極高優先] Phase 9 (Part 3) 重構服務層 (Service Layer) 為實例化物件與依賴注入 (DI)**：
+  * **目標**：將靜態方法改為實例方法，並搭配 FastAPI 的 `Depends` 機制自動注入相依資源。
+  * **⚠️ 重要提醒**：實作完成後，務必**拔除** Part 1 留在 `__init__.py` 的全域暫時變數與代理函數！
+
+- [ ] 3. **🟡 [中高優先] 重構 Redis 連線管理為 OOP 單例或依賴注入**：
+  * **背景原因**：`app/core/cache.py` 定義了 `global redis_client`，若其他模組在 `init_redis()` 執行前就 import 會拿到 `None`，容易引發「初始化時間差」的潛在崩潰。
+  * **優化方案**：重構為 `RedisManager` 單例類別 (或純粹依賴注入)，確保呼叫時保證連線池已被正確初始化，消滅全域變數問題。
+
+- [ ] 4. **🟢 [偏低優先 / 視需求] 評估安全與認證輔助模組是否需 OOP 化**：
+  * **背景原因**：`hasher.py`, `jwt.py`, `otp.py` 目前為純函數式設計，內部直接依賴 `settings.SECRET_KEY`。
+  * **評估結果**：由於加密演算法本身是**無狀態 (Stateless)** 且極度單純，硬包裝成類別 (如 `JWTManager`) 雖然工整，但增加使用時的繁瑣度。建議此部分**維持現狀**即可，除非未來專案發展出多租戶或需在測試中頻繁動態抽換金鑰的需求。
