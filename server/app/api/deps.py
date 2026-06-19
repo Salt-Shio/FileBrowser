@@ -64,12 +64,14 @@ async def get_redis() -> AsyncGenerator[redis.Redis, None]:
     """
     依賴注入用：獲取 Redis 客戶端實例。
     因為 redis.Redis(connection_pool=pool) 本身是執行緒安全且透過底層 Pool 借用連線，
-    直接 yield 全域的 redis_client 即可，不需要每次建立/關閉連線。
+    直接 yield 單例的 client 即可，不需要每次建立/關閉連線。
     """
-    from app.core.cache import redis_client
-    if redis_client is None:
+    from app.core.cache import redis_manager
+    try:
+        client = redis_manager.client
+    except RuntimeError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Redis service is unavailable."
         )
-    yield redis_client
+    yield client

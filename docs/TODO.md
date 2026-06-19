@@ -115,16 +115,17 @@
 
 根據架構評估，以下為各模組改用 OOP 與依賴注入 (DI) 的必要性與優先級排序：
 
-- [ ] 1. **🔴 [極高優先] Phase 9 (Part 1) 重構儲存層與暫存區為 OOP 介面/多型設計 (Strategy Pattern)**：
+- [x] 1. **🔴 [極高優先] Phase 9 (Part 1) 重構儲存層與暫存區為 OOP 介面/多型設計 (Strategy Pattern)**：
   * **目標**：實作 `BaseStorage(ABC)` 與 `LocalDiskStorage`，取代 `storage.py` 與 `chunks.py`。
   * **策略**：在 `__init__.py` 設定暫時的 `storage_instance` 以相容舊程式碼。
-- [ ] 2. **🔴 [極高優先] Phase 9 (Part 3) 重構服務層 (Service Layer) 為實例化物件與依賴注入 (DI)**：
+
+- [ ] 2. **🟡 [中高優先] Phase 9 (Part 2) 重構 Redis 連線管理為 OOP 單例**：
+  * **背景原因**：`app/core/cache.py` 定義了 `global redis_client`，若其他模組在 `init_redis()` 執行前就 import 會拿到 `None`，容易引發「初始化時間差」的潛在崩潰。
+  * **優化方案**：重構為 `RedisManager` 單例類別，確保呼叫時保證連線池已被正確初始化，消滅全域變數問題。
+
+- [ ] 3. **🔴 [極高優先] Phase 9 (Part 3) 重構服務層 (Service Layer) 為實例化物件與依賴注入 (DI)**：
   * **目標**：將靜態方法改為實例方法，並搭配 FastAPI 的 `Depends` 機制自動注入相依資源。
   * **⚠️ 重要提醒**：實作完成後，務必**拔除** Part 1 留在 `__init__.py` 的全域暫時變數與代理函數！
-
-- [ ] 3. **🟡 [中高優先] 重構 Redis 連線管理為 OOP 單例或依賴注入**：
-  * **背景原因**：`app/core/cache.py` 定義了 `global redis_client`，若其他模組在 `init_redis()` 執行前就 import 會拿到 `None`，容易引發「初始化時間差」的潛在崩潰。
-  * **優化方案**：重構為 `RedisManager` 單例類別 (或純粹依賴注入)，確保呼叫時保證連線池已被正確初始化，消滅全域變數問題。
 
 - [ ] 4. **🟢 [偏低優先 / 視需求] 評估安全與認證輔助模組是否需 OOP 化**：
   * **背景原因**：`hasher.py`, `jwt.py`, `otp.py` 目前為純函數式設計，內部直接依賴 `settings.SECRET_KEY`。

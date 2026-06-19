@@ -142,7 +142,7 @@ class VFSService:
         """
         獲取目錄瀏覽資料 (包含當前資料夾、子資料夾、子檔案與麵包屑，自帶 Redis 快取優化)。
         """
-        use_cache = bool(settings.VFS_DIRECTORY_CACHE_ENABLED and cache.redis_client)
+        use_cache = bool(settings.VFS_DIRECTORY_CACHE_ENABLED and cache.redis_manager.client)
 
         # 1. 決定 target_id (如果 folder_id 是 None 則獲取/建立 Root)
         target_id = folder_id
@@ -151,7 +151,7 @@ class VFSService:
             cached_root_id = None
             if use_cache:
                 try:
-                    cached_root_id = await cache.redis_client.get(root_cached_key)
+                    cached_root_id = await cache.redis_manager.client.get(root_cached_key)
                 except Exception as e:
                     print(f"[VFS Cache Error] Failed to get root cached ID: {e}")
                     use_cache = False  # 發生異常時，本次執行關閉快取
@@ -163,7 +163,7 @@ class VFSService:
                 target_id = root.id
                 if use_cache:
                     try:
-                        await cache.redis_client.set(root_cached_key, target_id)
+                        await cache.redis_manager.client.set(root_cached_key, target_id)
                     except Exception as e:
                         print(f"[VFS Cache Error] Failed to set root cached ID: {e}")
                         use_cache = False
@@ -174,7 +174,7 @@ class VFSService:
         cache_key = f"vfs:cache:browse:{owner_id}:{target_id}"
         if use_cache:
             try:
-                cached_json = await cache.redis_client.get(cache_key)
+                cached_json = await cache.redis_manager.client.get(cache_key)
                 if cached_json:
                     return json.loads(cached_json)
             except Exception as e:
@@ -189,7 +189,7 @@ class VFSService:
                 if use_cache:
                     try:
                         root_cached_key = f"vfs:cache:root_folder_id:{owner_id}"
-                        await cache.redis_client.delete(root_cached_key)
+                        await cache.redis_manager.client.delete(root_cached_key)
                     except Exception as e:
                         print(f"[VFS Cache Error] Failed to delete invalid root cache: {e}")
                         use_cache = False
@@ -197,7 +197,7 @@ class VFSService:
                 target_id = root.id
                 if use_cache:
                     try:
-                        await cache.redis_client.set(root_cached_key, target_id)
+                        await cache.redis_manager.client.set(root_cached_key, target_id)
                     except Exception as e:
                         print(f"[VFS Cache Error] Failed to reset root cached ID: {e}")
                         use_cache = False
@@ -240,7 +240,7 @@ class VFSService:
 
         if use_cache:
             try:
-                await cache.redis_client.set(
+                await cache.redis_manager.client.set(
                     cache_key,
                     response_model.model_dump_json(),
                     ex=settings.VFS_DIRECTORY_CACHE_TTL
@@ -257,7 +257,7 @@ class VFSService:
         清理目錄瀏覽快取 (延遲雙刪除機制)。
         使用 asyncio.create_task 進行非同步背景執行，以防阻塞主 API。
         """
-        if not settings.VFS_DIRECTORY_CACHE_ENABLED or cache.redis_client is None:
+        if not settings.VFS_DIRECTORY_CACHE_ENABLED or cache.redis_manager.client is None:
             return
 
 
@@ -266,26 +266,26 @@ class VFSService:
             pattern = f"vfs:cache:browse:{owner_id}:*"
             # 第一刪：即時刪除
             if folder_id:
-                await cache.redis_client.delete(key)
+                await cache.redis_manager.client.delete(key)
             else:
                 cursor = 0
                 while True:
-                    cursor, keys = await cache.redis_client.scan(cursor, match=pattern, count=100)
+                    cursor, keys = await cache.redis_manager.client.scan(cursor, match=pattern, count=100)
                     if keys:
-                        await cache.redis_client.delete(*keys)
+                        await cache.redis_manager.client.delete(*keys)
                     if cursor == 0:
                         break
 
             # 第二刪：延遲 1.0 秒刪除，排除讀寫併發髒數據
             await asyncio.sleep(1.0)
             if folder_id:
-                await cache.redis_client.delete(key)
+                await cache.redis_manager.client.delete(key)
             else:
                 cursor = 0
                 while True:
-                    cursor, keys = await cache.redis_client.scan(cursor, match=pattern, count=100)
+                    cursor, keys = await cache.redis_manager.client.scan(cursor, match=pattern, count=100)
                     if keys:
-                        await cache.redis_client.delete(*keys)
+                        await cache.redis_manager.client.delete(*keys)
                     if cursor == 0:
                         break
 
