@@ -22,6 +22,8 @@ storage = LocalDiskStorage()
 
 logger = logging.getLogger("gc_core")
 
+import redis.asyncio as redis
+
 # -----------------------------------------------------------------------------
 # 同步輔助函數 (交由 anyio.to_thread.run_sync 於執行緒池執行)
 # -----------------------------------------------------------------------------
@@ -42,9 +44,10 @@ def get_dir_mtime(path: str) -> Optional[float]:
 # -----------------------------------------------------------------------------
 # 階段一：清理過期上傳會話
 # -----------------------------------------------------------------------------
-async def gc_expired_sessions(db: AsyncSession, expire_threshold: datetime) -> Tuple[int, List[str]]:
+async def gc_expired_sessions(db: AsyncSession, redis_client: redis.Redis, expire_threshold: datetime) -> Tuple[int, List[str]]:
     """
     查詢並直接清理所有過期的上傳會話，物理清除暫存分塊，並自資料庫中抹除。
+    加入 Redis 活躍防護：若 Redis 進度鎖仍在，代表活躍上傳中，則跳過並更新建立時間。
     """
     cleaned_count = 0
     errors = []
@@ -58,9 +61,17 @@ async def gc_expired_sessions(db: AsyncSession, expire_threshold: datetime) -> T
             logger.info("[GC Phase 1] 無任何過期資料庫會話紀錄，跳過。")
             return 0, errors
 
-        logger.warning(f"[GC Phase 1] 偵測到 {len(expired_sessions)} 個已過期上傳會話，即將進行直接清理...")
+        logger.warning(f"[GC Phase 1] 偵測到 {len(expired_sessions)} 個已過期上傳會話，開始 Redis 活躍防護校驗...")
         for session in expired_sessions:
             try:
+                # 0. Redis 活躍防護：檢查是否有正在上傳的進度
+                progress_key = f"vfs:upload_progress:{session.id}"
+                is_active = await redis_client.exists(progress_key)
+                if is_active:
+                    # 活躍中，自動展延生命週期 (更新 created_at 到當前時間)，避免下次 GC 重複掃描
+                    session.created_at = datetime.now(timezone.utc)
+                    logger.info(f"[GC Phase 1] 會話 {session.id} 於 Redis 仍活躍，自動展延生命週期。")
+                    continue
                 # 1. 物理清除分塊暫存
                 await storage.cleanup_temp(session.id)
                 
@@ -73,9 +84,8 @@ async def gc_expired_sessions(db: AsyncSession, expire_threshold: datetime) -> T
                 logger.error(f"[GC Phase 1] {err_msg}")
                 errors.append(err_msg)
         
-        # 3. 批次一次性 commit，顯著提升資料庫效能
-        if cleaned_count > 0:
-            await db.commit()
+        # 3. 批次一次性 commit，保存物理清理與生命週期展延的變更
+        await db.commit()
             
     except Exception as e:
         err_msg = f"過期會話清理程序失敗: {e}"
@@ -121,20 +131,7 @@ async def gc_orphaned_temp_dirs(db: AsyncSession, expire_threshold: datetime) ->
             if upload_id in active_ids:
                 continue
 
-            p_path = os.path.join(temp_dir, tp_file)
-            mtime_stamp = await anyio.to_thread.run_sync(get_dir_mtime, p_path)
-            
-            # 🟢 Guard Clause 2: 若獲取修改時間失敗，跳過
-            if not mtime_stamp:
-                continue
-
-            mtime = datetime.fromtimestamp(mtime_stamp, timezone.utc).replace(tzinfo=None)
-            
-            # 🟢 Guard Clause 3: 若物理檔案近期有被修改過，說明可能正有併發寫入，跳過！
-            if mtime >= expire_threshold:
-                continue
-
-            logger.warning(f"[GC Phase 2] 偵測到物理孤立暫存檔案 {tp_file} 且已超時，即將物理清除...")
+            logger.warning(f"[GC Phase 2] 偵測到物理孤立暫存檔案 {tp_file} (查無活躍會話)，即將物理清除...")
             try:
                 await storage.cleanup_temp(upload_id)
                 cleaned_count += 1

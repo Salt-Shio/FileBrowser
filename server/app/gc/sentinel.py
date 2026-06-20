@@ -18,6 +18,8 @@ from app.gc.core import (
     gc_expired_soft_deleted_nodes
 )
 
+from app.core.cache import redis_manager
+
 logger = logging.getLogger("gc_sentinel")
 
 # -----------------------------------------------------------------------------
@@ -32,9 +34,16 @@ async def run_expired_uploads_gc(db: AsyncSession) -> dict:
     expire_threshold = now_naive_utc - timedelta(hours=settings.UPLOAD_SESSION_EXPIRE_HOURS)
     
     errors = []
+    
+    # 獲取 Redis 客戶端
+    try:
+        redis_client = redis_manager.client
+    except Exception as e:
+        logger.error(f"[GC] 取得 Redis 客戶端失敗，無法進行過期會話清理防護：{e}")
+        return {"error": "Redis client not available"}
 
     # --- 階段一：清理過期上傳會話 ---
-    db_cleaned_count, errs1 = await gc_expired_sessions(db, expire_threshold)
+    db_cleaned_count, errs1 = await gc_expired_sessions(db, redis_client, expire_threshold)
     errors.extend(errs1)
 
     # --- 階段二：清理磁碟中的孤立暫存目錄 ---
