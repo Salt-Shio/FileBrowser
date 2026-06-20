@@ -1,5 +1,5 @@
-# 1. 選擇 Python 3.10 精簡版作為地基
-FROM python:3.10-slim
+# 1. 選擇 Python 3.12 精簡版作為地基 (享有 Faster CPython 效能躍升)
+FROM python:3.12-slim
 
 # 2. 設定容器內的工作目錄為 /app
 WORKDIR /app

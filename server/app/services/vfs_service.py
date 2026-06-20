@@ -8,9 +8,10 @@
 import json
 import uuid
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from mimetypes import guess_type
+from redis.asyncio import Redis
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -18,6 +19,7 @@ from sqlalchemy import update
 
 from app.models import Folder, File, UploadSession
 from app.schemas.vfs import Breadcrumb, BrowseResponse
+from app.filesystem.base import BaseStorage
 from app.core.config import settings
 from app.core.exceptions import (
     NodeNotFoundError,
@@ -36,7 +38,7 @@ class VFSService:
     虛擬檔案系統服務 (VFS Service)
     職責：處理檔案與目錄的 CRUD 業務邏輯，並確保資料安全與一致性。
     """
-    def __init__(self, db: AsyncSession, storage, redis_client):
+    def __init__(self, db: AsyncSession, storage: BaseStorage, redis_client: Redis):
         self.db = db
         self.storage = storage
         self.redis_client = redis_client
@@ -134,7 +136,7 @@ class VFSService:
         
         return root
 
-    async def get_browse_data(self, folder_id: Optional[str], owner_id: str) -> dict:
+    async def get_browse_data(self, folder_id: Optional[str], owner_id: str) -> Dict[str, Any]:
         """
         獲取目錄瀏覽資料 (包含當前資料夾、子資料夾、子檔案與麵包屑，自帶 Redis 快取優化)。
         """
@@ -555,7 +557,8 @@ class VFSService:
     async def init_upload(
         self,
         filename: str,
-        total_chunks: int,
+        total_size: int,
+        chunk_size: int,
         expected_hash: Optional[str],
         owner_id: str,
         target_folder_id: Optional[str] = None
@@ -593,17 +596,25 @@ class VFSService:
         if conflict_session_res.scalars().first():
             raise BaseBusinessException(f"同名檔案 '{filename}' 的上傳會話已在進行中，請勿重複上傳", status_code=400)
 
-        # 4. 建立上傳會話
+        # 4. 計算分塊數並建立上傳會話
+        total_chunks = (total_size + chunk_size - 1) // chunk_size if chunk_size > 0 else 0
+        
         session = UploadSession(
             owner_id=owner_id,
             filename=filename,
             target_folder_id=target_folder_id,
             total_chunks=total_chunks,
+            total_size=total_size,
+            chunk_size=chunk_size,
             expected_hash=expected_hash
         )
         self.db.add(session)
         await self.db.commit()
         await self.db.refresh(session)
+        
+        # 5. 預分配 Sparse File 實體空間
+        await self.storage.init_sparse_file(session.id, total_size)
+        
         return session
 
     async def upload_chunk(
@@ -632,8 +643,14 @@ class VFSService:
         if chunk_index < 0 or chunk_index >= session.total_chunks:
             raise UploadSessionValidationError(f"無效的分塊索引：{chunk_index}，總分塊數為：{session.total_chunks}")
 
-        # 4. 寫入實體暫存
-        await self.storage.save_chunk(upload_id, chunk_index, chunk_data)
+        # 4. 寫入實體暫存 (隨機寫入)
+        offset = chunk_index * session.chunk_size
+        await self.storage.save_chunk(upload_id, offset, chunk_data)
+
+        # 5. 將已上傳的分塊寫入 Redis 追蹤進度，設定 24H 過期
+        progress_key = f"vfs:upload_progress:{upload_id}"
+        await self.redis_client.sadd(progress_key, chunk_index)
+        await self.redis_client.expire(progress_key, 86400)
 
     async def finalize_upload(
         self,
@@ -654,18 +671,20 @@ class VFSService:
         if session.owner_id != owner_id:
             raise PermissionDeniedError("無權存取此上傳會話")
 
-        # 2. 檢索現有已上傳的分塊索引列表
-        uploaded_chunks = await self.storage.list_chunks(upload_id)
+        # 2. 檢索現有已上傳的分塊索引列表 (自 Redis)
+        progress_key = f"vfs:upload_progress:{upload_id}"
+        uploaded_chunks_str = await self.redis_client.smembers(progress_key)
+        uploaded_chunks = [int(x) for x in uploaded_chunks_str]
         missing_chunks = [i for i in range(session.total_chunks) if i not in uploaded_chunks]
         
         if missing_chunks:
             raise UploadSessionValidationError(f"分塊尚未上傳完畢，缺失分塊索引：{missing_chunks}")
 
-        # 3. 流式物理合併所有碎片並計算大小與 SHA256 雜湊
+        # 3. 物理驗證與正式入籍
         try:
-            merged_info = await self.storage.merge_from_chunks(upload_id, session.total_chunks)
+            merged_info = await self.storage.finalize_file(upload_id)
         except Exception as e:
-            raise UploadSessionValidationError(f"實體合併失敗：{str(e)}")
+            raise UploadSessionValidationError(f"實體校驗入籍失敗：{str(e)}")
 
         # 4. 校驗雜湊完整性 (比對前端預期與實體合併計算的 Hash)
         if session.expected_hash:
@@ -714,8 +733,9 @@ class VFSService:
         await self.db.commit()
         await self.db.refresh(new_file)
 
-        # 清除暫存目錄碎片
+        # 清除暫存目錄碎片與 Redis 進度追蹤
         await self.storage.cleanup_temp(upload_id)
+        await self.redis_client.delete(progress_key)
 
         # 7. 清理快取
         await self._clear_browse_cache(owner_id, new_file.folder_id)
@@ -726,7 +746,7 @@ class VFSService:
         self,
         upload_id: str,
         owner_id: str
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """
         獲取分塊上傳會話的進度狀態與缺失分塊。
         """
@@ -743,8 +763,10 @@ class VFSService:
         if session.owner_id != owner_id:
             raise PermissionDeniedError("無權存取此上傳會話")
 
-        # 3. 讀取實體已存在的分塊列表 (呼叫原子操作 list_chunks)
-        uploaded_chunks = await self.storage.list_chunks(upload_id)
+        # 3. 從 Redis 讀取實體已存在的分塊列表
+        progress_key = f"vfs:upload_progress:{upload_id}"
+        uploaded_chunks_str = await self.redis_client.smembers(progress_key)
+        uploaded_chunks = [int(x) for x in uploaded_chunks_str]
         uploaded_chunks.sort()
 
         # 4. 計算缺失分塊 (差集)
@@ -765,7 +787,7 @@ class VFSService:
         self,
         upload_id: str,
         owner_id: str
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """
         主動取消上傳會話，清除資料庫紀錄並物理刪除磁碟暫存分塊目錄。
         """
@@ -786,8 +808,9 @@ class VFSService:
         await self.db.delete(session)
         await self.db.commit()
 
-        # 4. 物理物理原子操作清理磁碟暫存分塊
+        # 4. 物理清理磁碟暫存分塊檔案，並清除 Redis 進度
         await self.storage.cleanup_temp(upload_id)
+        await self.redis_client.delete(f"vfs:upload_progress:{upload_id}")
 
         return {
             "message": "上傳會話與磁碟暫存已成功取消並物理清除",

@@ -62,7 +62,30 @@
 
 ---
 
-## 6. 未來優化規劃 (Future Optimizations)
+## 6. 現有 Redis 資料庫鍵值清單 (Current Data Schema)
 
-引入 Redis 後，專案已具備優異的快取能力。
-已規劃將「虛擬目錄架構快取」列入長期的優化項目（詳見 `docs/TODO.md`），以降低頻繁讀取目錄樹時所造成的 SQLite I/O 開銷。
+截至目前，系統在 Redis 中儲存了以下三大類核心狀態與快取資料，均嚴格遵守無狀態設計與 TTL 自動消亡原則：
+
+### 6.1 大檔案下載與限流 (Download Tickets)
+*   **`vfs:ticket:download:{ticket_uuid}`**：
+    *   **用途**：大檔案單次下載憑證，存放 `{file_id, owner_id}` 等授權資訊。
+    *   **生命週期**：TTL 固定 **30 秒**。
+*   **`vfs:ticket:user_download:{owner_id}:{file_id}`**：
+    *   **用途**：防刷鎖，防止同一使用者 30 秒內對同一檔案狂刷下載鈕產生大量重複 Ticket。
+    *   **生命週期**：TTL 固定 **30 秒**。
+*   **`vfs:ticket:active_conns:{ticket_uuid}`**：
+    *   **用途**：記錄單一 Ticket 目前的併發連線數（例如斷點續傳的平行下載）。上限限制為 4，避免頻寬被單一檔案耗盡。
+    *   **生命週期**：TTL 固定 **30 秒**。
+
+### 6.2 虛擬檔案目錄快取 (VFS Directory Cache)
+*   **`vfs:root:{owner_id}`**：
+    *   **用途**：快取使用者的根目錄 (`root`) Folder ID，消滅每次 API 請求都需連線 SQLite 查詢 Root ID 的 I/O 開銷。
+    *   **清理機制**：當發生根目錄遺失重建時才會手動更新/刪除。
+*   **`vfs:browse:{owner_id}:{folder_id}`**：
+    *   **用途**：快取該目錄下所有子資料夾、檔案列表與麵包屑導航資料的 JSON 序列化字串。極大幅提升瀏覽效能。
+    *   **清理機制**：當該目錄發生異動（如 `mkdir`, `move`, `rename`, `delete` 或「檔案上傳完成」）時，觸發雙刪機制 (Double Delete) 強制清除該層級與其父層級的快取。
+
+### 6.3 認證與防重放攻擊 (Auth 2FA Replay Protection)
+*   **`auth:lock:2fa_replay:{username}:{otp_code}`**：
+    *   **用途**：防範 2FA (TOTP) 重放攻擊 (Replay Attack) 的鎖。當使用者成功登入、啟用或停用 2FA 時寫入該代碼，確保同一個 6 位數密碼在視窗內無法被惡意攔截並重用。
+    *   **生命週期**：TTL 固定綁定環境變數 `TWO_FA_REPLAY_TTL`（通常為 30 秒內）。

@@ -286,7 +286,7 @@ export const useVfsStore = defineStore('vfs', () => {
       // 2. 若沒有有效的 cachedUploadId，則初始化一個
       if (!uploadId) {
         const folderId = currentFolder.value?.id || null;
-        const initRes = await vfsApi.initUpload(task.filename, totalChunks, folderId);
+        const initRes = await vfsApi.initUpload(task.filename, task.file.size, CHUNK_SIZE, folderId);
         uploadId = initRes.data.upload_id;
         task.uploadId = uploadId;
         task.uploadedChunks = [];

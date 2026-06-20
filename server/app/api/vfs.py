@@ -114,7 +114,8 @@ async def init_upload(
     """
     session = await service.init_upload(
         filename=data.filename,
-        total_chunks=data.total_chunks,
+        total_size=data.total_size,
+        chunk_size=data.chunk_size,
         expected_hash=data.expected_hash,
         owner_id=current_user.id,
         target_folder_id=data.target_folder_id

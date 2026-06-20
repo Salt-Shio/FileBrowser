@@ -84,10 +84,11 @@ export const vfsApi = {
   /**
    * 初始化分塊上傳
    */
-  initUpload(filename: string, totalChunks: number, targetFolderId?: string | null, expectedHash?: string | null) {
+  initUpload(filename: string, totalSize: number, chunkSize: number, targetFolderId?: string | null, expectedHash?: string | null) {
     return api.post('/vfs/upload/init', {
       filename,
-      total_chunks: totalChunks,
+      total_size: totalSize,
+      chunk_size: chunkSize,
       target_folder_id: targetFolderId || null,
       expected_hash: expectedHash || null,
     });

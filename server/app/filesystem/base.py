@@ -23,21 +23,21 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    async def merge_from_chunks(self, upload_id: str, total_chunks: int) -> Dict[str, Any]:
-        """將暫存碎片合併為正式檔案，並回傳 {storage_name, size, hash}"""
+    async def init_sparse_file(self, upload_id: str, total_size: int) -> None:
+        """建立並預先分配實體檔案空間 (Sparse File)"""
         pass
 
     @abstractmethod
-    async def save_chunk(self, upload_id: str, index: int, data: bytes) -> None:
-        """寫入單一暫存分塊"""
+    async def finalize_file(self, upload_id: str) -> Dict[str, Any]:
+        """驗證暫存檔案完整性並正式入籍，回傳 {storage_name, size, hash}"""
         pass
 
     @abstractmethod
-    async def list_chunks(self, upload_id: str) -> List[int]:
-        """獲取目前已上傳的分塊索引列表"""
+    async def save_chunk(self, upload_id: str, offset: int, data: bytes) -> None:
+        """依據指定位移量 (offset) 寫入單一暫存分塊"""
         pass
 
     @abstractmethod
     async def cleanup_temp(self, upload_id: str) -> None:
-        """刪除整個暫存分塊目錄"""
+        """刪除暫存檔案"""
         pass

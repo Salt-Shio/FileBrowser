@@ -29,64 +29,55 @@ class LocalDiskStorage(BaseStorage):
         if await to_thread.run_sync(os.path.exists, path):
             await to_thread.run_sync(os.remove, path)
 
-    async def merge_from_chunks(self, upload_id: str, total_chunks: int) -> Dict[str, Any]:
-        session_dir = os.path.join(self.temp_dir, upload_id)
+    async def init_sparse_file(self, upload_id: str, total_size: int) -> None:
+        file_path = os.path.join(self.temp_dir, f"{upload_id}.tmp")
+        def _init():
+            os.makedirs(self.temp_dir, exist_ok=True)
+            with open(file_path, "wb") as f:
+                f.truncate(total_size)
+        await to_thread.run_sync(_init)
+
+    async def finalize_file(self, upload_id: str) -> Dict[str, Any]:
+        temp_path = os.path.join(self.temp_dir, f"{upload_id}.tmp")
+        if not await to_thread.run_sync(os.path.exists, temp_path):
+            raise FileNotFoundError(f"合併失敗：找不到暫存檔案 {upload_id}.tmp")
+
         file_uuid = str(uuid.uuid4())
         storage_name = f"{file_uuid}.dat"
         target_path = self.get_full_path(storage_name)
 
-        def _merge_logic():
-            sha256 = hashlib.sha256()
-            current_size = 0
-            
-            # 確保目標目錄存在
+        def _finalize_logic():
             os.makedirs(self.upload_dir, exist_ok=True)
+            
+            # 讀取 .tmp 算 Hash (Python 3.11+ 專屬黑科技寫法)
+            with open(temp_path, "rb") as source_f:
+                digest = hashlib.file_digest(source_f, "sha256")
+                sha256_hash_string = digest.hexdigest()
                 
-            with open(target_path, "wb") as target_f:
-                for i in range(total_chunks):
-                    chunk_path = os.path.join(session_dir, str(i))
-                    if not os.path.exists(chunk_path):
-                        raise FileNotFoundError(f"合併失敗：缺失分塊 {i}")
-                    
-                    with open(chunk_path, "rb") as source_f:
-                        # 每次讀取由 settings 設定的緩衝區大小
-                        while True:
-                            buffer = source_f.read(settings.FILE_MERGE_BUFFER_SIZE)
-                            if not buffer:
-                                break
-                            target_f.write(buffer)
-                            sha256.update(buffer)
-                            current_size += len(buffer)
+            current_size = os.path.getsize(temp_path)
+            
+            # 計算完 Hash 後，直接改名 (瞬間完成入籍)
+            # 若是在同一個硬碟分區下，os.rename 不會發生真實的物理搬移
+            os.rename(temp_path, target_path)
             
             return {
                 "storage_name": storage_name,
                 "size": current_size,
-                "hash": sha256.hexdigest()
+                "hash": sha256_hash_string
             }
 
-        return await to_thread.run_sync(_merge_logic)
+        return await to_thread.run_sync(_finalize_logic)
 
-    async def save_chunk(self, upload_id: str, index: int, data: bytes) -> None:
-        session_dir = os.path.join(self.temp_dir, upload_id)
-        if not os.path.exists(session_dir):
-            await to_thread.run_sync(os.makedirs, session_dir, True)
-        
-        chunk_path = os.path.join(session_dir, str(index))
+    async def save_chunk(self, upload_id: str, offset: int, data: bytes) -> None:
+        temp_path = os.path.join(self.temp_dir, f"{upload_id}.tmp")
         def _write():
-            with open(chunk_path, "wb") as f:
+            # 必須使用 r+b 模式，才能在不覆蓋原本內容的情況下任意寫入
+            with open(temp_path, "r+b") as f:
+                f.seek(offset)
                 f.write(data)
         await to_thread.run_sync(_write)
 
-    async def list_chunks(self, upload_id: str) -> List[int]:
-        session_dir = os.path.join(self.temp_dir, upload_id)
-        if not await to_thread.run_sync(os.path.exists, session_dir):
-            return []
-        
-        def _list():
-            return [int(f) for f in os.listdir(session_dir) if f.isdigit()]
-        return await to_thread.run_sync(_list)
-
     async def cleanup_temp(self, upload_id: str) -> None:
-        session_dir = os.path.join(self.temp_dir, upload_id)
-        if await to_thread.run_sync(os.path.exists, session_dir):
-            await to_thread.run_sync(shutil.rmtree, session_dir)
+        temp_path = os.path.join(self.temp_dir, f"{upload_id}.tmp")
+        if await to_thread.run_sync(os.path.exists, temp_path):
+            await to_thread.run_sync(os.remove, temp_path)

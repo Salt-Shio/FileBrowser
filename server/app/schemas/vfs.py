@@ -104,7 +104,8 @@ class UploadInitRequest(BaseModel):
     初始化分塊上傳請求模型
     """
     filename: str
-    total_chunks: int
+    total_size: int
+    chunk_size: int
     expected_hash: Optional[str] = None
     target_folder_id: Optional[str] = None
 

@@ -130,3 +130,60 @@
 - [ ] 4. **🟢 [偏低優先 / 視需求] 評估安全與認證輔助模組是否需 OOP 化**：
   * **背景原因**：`hasher.py`, `jwt.py`, `otp.py` 目前為純函數式設計，內部直接依賴 `settings.SECRET_KEY`。
   * **評估結果**：由於加密演算法本身是**無狀態 (Stateless)** 且極度單純，硬包裝成類別 (如 `JWTManager`) 雖然工整，但增加使用時的繁瑣度。建議此部分**維持現狀**即可，除非未來專案發展出多租戶或需在測試中頻繁動態抽換金鑰的需求。
+
+- [ ] 5. **🟡 [中高優先] Phase 9 (Part 5) 引入 `TYPE_CHECKING` 優化全域模組引用**：
+  * **目標**：全面掃描所有 `.py` 檔案，將僅用於 Type Hint 的頂層 `import` 移入 `if TYPE_CHECKING:` 區塊內，並搭配 `from __future__ import annotations`。
+  * **背景原因**：徹底消滅專案變大後容易引發的「循環依賴 (Circular Import)」風險，同時減少 FastAPI 啟動時的 Runtime Overhead。
+
+---
+
+## Phase 10: 大檔案上傳架構重構 (隨機寫入 + Redis 進度追蹤) [待執行]
+
+為了徹底解決大檔案在 `finalize_upload` 階段發生的合併 I/O 延遲，將上傳機制重構為「實體 Sparse File 預分配與 Random Access Write」，並由 Redis 接管高頻進度追蹤。
+
+- [x] **Step 1: 基礎層 (Base Layer) - 資料庫模型與 API Schema**
+  - 修改 `UploadSession` 模型，加入 `total_size` (檔案總大小) 與 `chunk_size` (切塊大小)。
+  - 修改 `schemas.vfs.UploadInitRequest` 補上對應的請求驗證欄位。
+- [x] **Step 2: 基礎層 (Base Layer) - 實體儲存策略 (`filesystem/local.py`)**
+  - 實作 `init_sparse_file` 瞬間分配硬碟空間 (`truncate`)。
+  - 改寫 `save_chunk`，開啟 `.tmp` 檔並使用 `seek(offset)` 隨機寫入。
+  - 實作 `finalize_file` 以串流方式驗證 SHA256 並正式 rename，同時刪除舊有的 `merge_from_chunks`。
+- [x] **Step 3: 執行層 (Logic Layer) - 核心業務流程 (`services/vfs_service.py`)**
+  - 串接 `init_upload` (預分配) 與 `upload_chunk` (計算 offset 並寫入)。
+  - 整合 Redis `SADD` 追蹤已上傳分塊，將 `get_upload_status` 改為查詢 Redis。
+  - 調整 `finalize_upload` 與 `cancel_upload` 以配合新的單一 `.tmp` 檔案機制與清除 Redis 鎖。
+- [x] **Step 4: 管理層 (Management Layer) - GC 背景清理 (`gc/core.py`)**
+  - 調整 Phase 2 孤兒暫存清理邏輯，由尋找「孤兒目錄」改為尋找結尾為 `.tmp` 的「孤兒檔案」。
+
+---
+
+## Phase 11: 重新設計大檔案上傳的生命週期與 GC 清理邏輯 [待規劃]
+
+在 Phase 10 的重構中，我們將上傳進度完全轉交給 Redis 以解決 SQL 效能問題，但這引發了嚴重的業務邏輯 Bug 與架構不合理之處：
+
+- **致命 Bug (活躍狀態判斷斷層)**：SQL 的 `UploadSession.created_at` 從建立後不再更新。若大檔案傳輸過程超過系統設定的 GC 門檻 (如 24 小時)，即使客戶端仍在積極上傳 (Redis TTL 依然活躍)，GC Phase 1 仍會因 SQL 紀錄超時而將活躍會話強行誤殺。
+- **處理方式不合理**：
+  1. 試圖在 GC Phase 1 透過檢查實體檔案的 `mtime` 來防呆是「頭痛醫腳」的解法，沒有從根本上統一 SQL 與 Redis 的生命週期，且破壞了依賴關係的乾淨度。
+  2. 目前 GC Phase 1 刪除 SQL 紀錄時，並未同步主動刪除 Redis Key，導致產生殭屍快取。
+
+**[預期重構目標與解法討論]**：
+必須重新定義「上傳會話過期」的業務規則，明確將其定義為「真正的閒置時間」，而非「絕對的存活時間」。
+可行的設計方向 (待與決策者討論決定)：
+- *方向 A*：是否該由 Redis (作為高頻活躍度唯一基準) 反向主導清理機制？
+- *方向 B*：是否要在 `upload_chunk` 流程中，設計「每 N 個分塊 / 或 N 分鐘」非同步打點更新一次 SQL 的 `updated_at`，以維持 SQL 作為唯一真理的權威性且不引發嚴重效能瓶頸？
+- *方向 C*：GC Phase 1 在依賴 SQL 判斷前，強制加入對 Redis TTL 的校驗，並確保三方 (SQL/Disk/Redis) 的徹底同步刪除。
+
+---
+
+## Phase 12: 跨資料夾斷點續傳支援 (Cross-Folder Resume) [待執行]
+
+目前斷點續傳能跨資料夾觸發，但檔案最終歸宿會被鎖死在最初上傳的資料夾。為了保留不重複傳輸的效能優勢，並符合使用者「在哪個資料夾發起，檔案就落在哪個資料夾」的直覺體驗，預計實作以下改動：
+
+- [ ] 1. **後端 Schema 修改**：新增 `UploadResumeRequest`，讓續傳請求支援傳入 `target_folder_id` (Optional)。
+- [ ] 2. **後端服務層修改**：於 `vfs_service.py` 實作全新的 `resume_upload` 函數。
+  - 在改變目標資料夾前，**先做檔名衝突檢查** (包含實體檔案與活躍上傳)。
+  - 若無衝突，動態更新 `UploadSession.target_folder_id`。
+- [ ] 3. **後端 API 路由修改**：將原本用來檢查續傳狀態的 `GET /upload/status/{upload_id}` 邏輯轉移或擴充到新的 `POST /upload/resume` 介面，以符合 RESTful 語義。
+- [ ] 4. **前端 API 與 Store 修改**：
+  - 更新 `src/api/vfs.ts` 提供 `resumeUpload` 呼叫。
+  - 修改 `src/stores/vfs.ts` 的 `executeUploadTask`，在發現快取時呼叫 `resumeUpload` 而非 `getUploadStatus`。若因衝突而回傳錯誤，則自動清除 LocalStorage 快取並退回正常的重新上傳流程。

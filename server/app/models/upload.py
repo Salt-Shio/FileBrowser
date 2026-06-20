@@ -7,7 +7,7 @@
 """
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, BigInteger, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -28,8 +28,10 @@ class UploadSession(Base):
     filename = Column(String, nullable=False)
     target_folder_id = Column(String, ForeignKey("folders.id"), nullable=True)
     
-    # 4. 分塊進度控管
+    # 4. 分塊進度控管與隨機寫入屬性
     total_chunks = Column(Integer, nullable=False)
+    total_size = Column(BigInteger, nullable=False, default=0)
+    chunk_size = Column(Integer, nullable=False, default=0)
     
     # 5. 完整性預期 (SHA256，由前端提供)
     expected_hash = Column(String, nullable=True)

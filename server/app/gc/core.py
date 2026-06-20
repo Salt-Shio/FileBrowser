@@ -15,16 +15,19 @@ from sqlalchemy.future import select
 
 from app.core.config import settings
 from app.models import UploadSession, Folder, File
-from app import filesystem
+from app.filesystem.local import LocalDiskStorage
+
+# 實例化儲存服務供背景 GC 使用
+storage = LocalDiskStorage()
 
 logger = logging.getLogger("gc_core")
 
 # -----------------------------------------------------------------------------
 # 同步輔助函數 (交由 anyio.to_thread.run_sync 於執行緒池執行)
 # -----------------------------------------------------------------------------
-def list_physical_dirs(path: str) -> list:
+def list_physical_temp_files(path: str) -> List[str]:
     try:
-        return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+        return [f for f in os.listdir(path) if f.endswith('.tmp') and os.path.isfile(os.path.join(path, f))]
     except Exception as e:
         logger.error(f"[GC Helper] 讀取目錄 {path} 失敗: {e}")
         return []
@@ -59,7 +62,7 @@ async def gc_expired_sessions(db: AsyncSession, expire_threshold: datetime) -> T
         for session in expired_sessions:
             try:
                 # 1. 物理清除分塊暫存
-                await filesystem.cleanup_temp(session.id)
+                await storage.cleanup_temp(session.id)
                 
                 # 2. 直接刪除會話紀錄，不需重複執行資料庫 select 與越權校驗
                 await db.delete(session)
@@ -82,11 +85,11 @@ async def gc_expired_sessions(db: AsyncSession, expire_threshold: datetime) -> T
     return cleaned_count, errors
 
 # -----------------------------------------------------------------------------
-# 階段二：清理磁碟中的孤立暫存目錄
+# 階段二：清理磁碟中的孤立暫存檔案 (.tmp)
 # -----------------------------------------------------------------------------
 async def gc_orphaned_temp_dirs(db: AsyncSession, expire_threshold: datetime) -> Tuple[int, List[str]]:
     """
-    盤點暫存區 /data/temp 中的目錄，若實體目錄在資料庫中查無對應之會話，且已超時則物理清除。
+    盤點暫存區 /data/temp 中的 .tmp 檔案，若實體檔案在資料庫中查無對應之會話，且已超時則物理清除。
     """
     cleaned_count = 0
     errors = []
@@ -99,10 +102,10 @@ async def gc_orphaned_temp_dirs(db: AsyncSession, expire_threshold: datetime) ->
             logger.info("[GC Phase 2] 暫存目錄不存在，跳過物理大掃除。")
             return 0, errors
 
-        temp_physical_dirs = await anyio.to_thread.run_sync(list_physical_dirs, temp_dir)
+        temp_physical_files = await anyio.to_thread.run_sync(list_physical_temp_files, temp_dir)
 
-        if not temp_physical_dirs:
-            logger.info("[GC Phase 2] 實體暫存目錄為空，跳過物理大掃除。")
+        if not temp_physical_files:
+            logger.info("[GC Phase 2] 實體暫存目錄為空或無 .tmp 檔案，跳過物理大掃除。")
             return 0, errors
 
         # 獲取所有活躍的上傳會話 ID 集合
@@ -110,12 +113,15 @@ async def gc_orphaned_temp_dirs(db: AsyncSession, expire_threshold: datetime) ->
         active_result = await db.execute(active_stmt)
         active_ids = set(active_result.scalars().all())
 
-        for tp_dir in temp_physical_dirs:
-            # 🟢 Guard Clause 1: 若此物理目錄在 DB 中有活躍會話，代表正常上傳中，跳過！
-            if tp_dir in active_ids:
+        for tp_file in temp_physical_files:
+            # 取出 upload_id (移除 .tmp 副檔名)
+            upload_id = tp_file[:-4]
+
+            # 🟢 Guard Clause 1: 若此物理檔案在 DB 中有活躍會話，代表正常上傳中，跳過！
+            if upload_id in active_ids:
                 continue
 
-            p_path = os.path.join(temp_dir, tp_dir)
+            p_path = os.path.join(temp_dir, tp_file)
             mtime_stamp = await anyio.to_thread.run_sync(get_dir_mtime, p_path)
             
             # 🟢 Guard Clause 2: 若獲取修改時間失敗，跳過
@@ -124,16 +130,16 @@ async def gc_orphaned_temp_dirs(db: AsyncSession, expire_threshold: datetime) ->
 
             mtime = datetime.fromtimestamp(mtime_stamp, timezone.utc).replace(tzinfo=None)
             
-            # 🟢 Guard Clause 3: 若物理目錄近期有被修改過，說明可能正有併發寫入，跳過！
+            # 🟢 Guard Clause 3: 若物理檔案近期有被修改過，說明可能正有併發寫入，跳過！
             if mtime >= expire_threshold:
                 continue
 
-            logger.warning(f"[GC Phase 2] 偵測到物理孤立暫存目錄 {tp_dir} 且已超時，即將物理清除...")
+            logger.warning(f"[GC Phase 2] 偵測到物理孤立暫存檔案 {tp_file} 且已超時，即將物理清除...")
             try:
-                await filesystem.cleanup_temp(tp_dir)
+                await storage.cleanup_temp(upload_id)
                 cleaned_count += 1
             except Exception as err:
-                err_msg = f"物理清理孤立目錄 {tp_dir} 失敗: {err}"
+                err_msg = f"物理清理孤立檔案 {tp_file} 失敗: {err}"
                 logger.error(f"[GC Phase 2] {err_msg}")
                 errors.append(err_msg)
                 
@@ -166,7 +172,7 @@ async def gc_expired_soft_deleted_nodes(db: AsyncSession, expire_threshold: date
             for file_obj in expired_files:
                 try:
                     # 先物理刪除
-                    await filesystem.delete_file(file_obj.storage_path)
+                    await storage.delete_file(file_obj.storage_path)
                     # 再 DB 刪除
                     await db.delete(file_obj)
                     deleted_files_count += 1
