@@ -194,9 +194,8 @@ async def gc_expired_soft_deleted_nodes(db: AsyncSession, expire_threshold: date
                     logger.error(f"[GC Phase 3] {err_msg}")
                     errors.append(err_msg)
 
-        # 3. 統一批次 commit 異動
-        if deleted_files_count > 0 or deleted_folders_count > 0:
-            await db.commit()
+        # 3. 統一批次 commit 異動 (移除 if 條件以保持一致性與未來擴充安全)
+        await db.commit()
             
     except Exception as e:
         err_msg = f"邏輯刪除項目盤點與物理清理失敗: {e}"
