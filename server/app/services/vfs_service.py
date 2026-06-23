@@ -559,7 +559,7 @@ class VFSService:
         filename: str,
         total_size: int,
         chunk_size: int,
-        expected_hash: Optional[str],
+        last_modified: int,
         owner_id: str,
         target_folder_id: Optional[str] = None
     ) -> UploadSession:
@@ -593,8 +593,16 @@ class VFSService:
             UploadSession.filename == filename
         )
         conflict_session_res = await self.db.execute(conflict_session_stmt)
-        if conflict_session_res.scalars().first():
-            raise BaseBusinessException(f"同名檔案 '{filename}' 的上傳會話已在進行中，請勿重複上傳", status_code=400)
+        conflict_session = conflict_session_res.scalars().first()
+
+        if conflict_session:
+            if conflict_session.last_modified != last_modified:
+                # 檔案特徵 (last_modified) 已改變，證明舊有會話已是無效幽靈
+                # 主動將其銷毀以解除死鎖，放行本次全新上傳
+                await self.cancel_upload(conflict_session.id, owner_id)
+            else:
+                # 檔案特徵一模一樣，可能正在別的分頁積極上傳中，嚴格拒絕以保護該上傳
+                raise BaseBusinessException(f"同名檔案 '{filename}' 的上傳會話已在進行中，請勿重複上傳", status_code=400)
 
         # 4. 計算分塊數並建立上傳會話
         total_chunks = (total_size + chunk_size - 1) // chunk_size if chunk_size > 0 else 0
@@ -606,7 +614,7 @@ class VFSService:
             total_chunks=total_chunks,
             total_size=total_size,
             chunk_size=chunk_size,
-            expected_hash=expected_hash
+            last_modified=last_modified
         )
         self.db.add(session)
         await self.db.commit()
@@ -686,15 +694,7 @@ class VFSService:
         except Exception as e:
             raise UploadSessionValidationError(f"實體校驗入籍失敗：{str(e)}")
 
-        # 4. 校驗雜湊完整性 (比對前端預期與實體合併計算的 Hash)
-        if session.expected_hash:
-            calculated_hash = merged_info["hash"]
-            if calculated_hash.lower() != session.expected_hash.lower():
-                # 雜湊不符，代表檔案傳輸損毀，物理刪除剛合併的正式檔案並拋出異常
-                await self.storage.delete_file(merged_info["storage_name"])
-                raise UploadSessionValidationError("檔案雜湊校驗失敗 (Hash mismatch)，檔案可能在傳輸中損毀。")
-
-        # 5. 檔案「正式入籍」虛擬檔案系統 (VFS)
+        # 4. 檔案「正式入籍」虛擬檔案系統 (VFS)
         # 決定目標虛擬資料夾，若無則歸屬於使用者的 Root
         target_folder_id = session.target_folder_id
         if not target_folder_id:
@@ -742,13 +742,15 @@ class VFSService:
 
         return new_file
 
-    async def get_upload_status(
+    async def resume_upload(
         self,
         upload_id: str,
-        owner_id: str
+        owner_id: str,
+        target_folder_id: Optional[str],
+        last_modified: int
     ) -> Dict[str, Any]:
         """
-        獲取分塊上傳會話的進度狀態與缺失分塊。
+        發起斷點續傳會話，進行特徵防呆驗證與目標資料夾重定向，並回傳進度狀態與缺失分塊。
         """
 
         # 1. 查詢上傳會話
@@ -763,13 +765,53 @@ class VFSService:
         if session.owner_id != owner_id:
             raise PermissionDeniedError("無權存取此上傳會話")
 
-        # 3. 從 Redis 讀取實體已存在的分塊列表
+        # 3. 特徵防禦校驗：比對最後修改時間
+        if session.last_modified != last_modified:
+            # 檔案已被修改，舊有的分塊與會話已無效
+            # 必須主動銷毀舊會話，否則前端退回 init_upload 時會遇到「同名檔案已在上傳中」的死鎖
+            await self.cancel_upload(upload_id, owner_id)
+            raise UploadSessionValidationError("檔案特徵 (last_modified) 已變更，無法續傳，請重新發起全新上傳。")
+
+        # 4. 目標資料夾重定向檢查
+        if target_folder_id is not None and session.target_folder_id != target_folder_id:
+            # 驗證目標資料夾權限
+            target_folder = await self.get_folder_by_id(target_folder_id, owner_id)
+            if not target_folder:
+                raise NodeNotFoundError("目標資料夾不存在或無權限存取")
+                
+            # 檢查目標目錄下的命名衝突 (正式檔案)
+            conflict_file_stmt = select(File).where(
+                File.folder_id == target_folder_id,
+                File.owner_id == owner_id,
+                File.name == session.filename,
+                File.is_deleted == False
+            )
+            conflict_file_res = await self.db.execute(conflict_file_stmt)
+            if conflict_file_res.scalars().first():
+                raise DuplicateNodeError(f"目標目錄下已存在名為 '{session.filename}' 的檔案")
+                
+            # 檢查活躍會話衝突
+            conflict_session_stmt = select(UploadSession).where(
+                UploadSession.target_folder_id == target_folder_id,
+                UploadSession.owner_id == owner_id,
+                UploadSession.filename == session.filename,
+                UploadSession.id != upload_id
+            )
+            conflict_session_res = await self.db.execute(conflict_session_stmt)
+            if conflict_session_res.scalars().first():
+                raise DuplicateNodeError(f"目標目錄下已有同名檔案 '{session.filename}' 正在上傳中")
+                
+            # 變更目標資料夾
+            session.target_folder_id = target_folder_id
+            await self.db.commit()
+
+        # 5. 從 Redis 讀取實體已存在的分塊列表
         progress_key = f"vfs:upload_progress:{upload_id}"
         uploaded_chunks_str = await self.redis_client.smembers(progress_key)
         uploaded_chunks = [int(x) for x in uploaded_chunks_str]
         uploaded_chunks.sort()
 
-        # 4. 計算缺失分塊 (差集)
+        # 6. 計算缺失分塊 (差集)
         all_chunks_set = set(range(session.total_chunks))
         uploaded_chunks_set = set(uploaded_chunks)
         missing_chunks = list(all_chunks_set - uploaded_chunks_set)

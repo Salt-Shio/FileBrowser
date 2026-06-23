@@ -106,7 +106,16 @@ class UploadInitRequest(BaseModel):
     filename: str
     total_size: int
     chunk_size: int
-    expected_hash: Optional[str] = None
+    last_modified: int
+    target_folder_id: Optional[str] = None
+
+
+class UploadResumeRequest(BaseModel):
+    """
+    發起跨資料夾斷點續傳請求模型
+    """
+    upload_id: str
+    last_modified: int
     target_folder_id: Optional[str] = None
 
 

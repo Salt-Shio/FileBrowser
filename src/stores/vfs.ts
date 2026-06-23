@@ -273,20 +273,20 @@ export const useVfsStore = defineStore('vfs', () => {
       if (cachedUploadId) {
         task.status = 'checking';
         try {
-          const statusRes = await vfsApi.getUploadStatus(cachedUploadId);
+          const folderId = currentFolder.value?.id || null;
+          const statusRes = await vfsApi.resumeUpload(cachedUploadId, task.file.lastModified, folderId);
           uploadId = statusRes.data.upload_id;
           task.uploadedChunks = statusRes.data.uploaded_chunks || [];
           task.uploadId = uploadId;
         } catch (statusErr) {
-          // 若獲取失敗，代表會話已失效或被過期 GC 刪除
+          // 若獲取失敗，代表會話已失效、防呆驗證不通過，或目標目錄衝突，清除快取重新開始
           localStorage.removeItem(cacheKey);
         }
       }
 
-      // 2. 若沒有有效的 cachedUploadId，則初始化一個
       if (!uploadId) {
         const folderId = currentFolder.value?.id || null;
-        const initRes = await vfsApi.initUpload(task.filename, task.file.size, CHUNK_SIZE, folderId);
+        const initRes = await vfsApi.initUpload(task.filename, task.file.size, CHUNK_SIZE, task.file.lastModified, folderId);
         uploadId = initRes.data.upload_id;
         task.uploadId = uploadId;
         task.uploadedChunks = [];

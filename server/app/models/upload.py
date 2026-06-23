@@ -33,8 +33,8 @@ class UploadSession(Base):
     total_size = Column(BigInteger, nullable=False, default=0)
     chunk_size = Column(Integer, nullable=False, default=0)
     
-    # 5. 完整性預期 (SHA256，由前端提供)
-    expected_hash = Column(String, nullable=True)
+    # 5. 檔案特徵防護
+    last_modified = Column(BigInteger, nullable=False, default=0) # 斷點續傳特徵，記錄最後修改時間戳 
     
     # 6. 會話建立時間 (用於自動清理 GC 判定)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

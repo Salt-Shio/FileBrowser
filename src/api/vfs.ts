@@ -84,13 +84,13 @@ export const vfsApi = {
   /**
    * 初始化分塊上傳
    */
-  initUpload(filename: string, totalSize: number, chunkSize: number, targetFolderId?: string | null, expectedHash?: string | null) {
+  initUpload(filename: string, totalSize: number, chunkSize: number, lastModified: number, targetFolderId?: string | null) {
     return api.post('/vfs/upload/init', {
       filename,
       total_size: totalSize,
       chunk_size: chunkSize,
+      last_modified: lastModified,
       target_folder_id: targetFolderId || null,
-      expected_hash: expectedHash || null,
     });
   },
   /**
@@ -116,10 +116,14 @@ export const vfsApi = {
     });
   },
   /**
-   * 查詢分塊上傳進度
+   * 發起跨資料夾斷點續傳
    */
-  getUploadStatus(uploadId: string) {
-    return api.get(`/vfs/upload/status/${uploadId}`);
+  resumeUpload(uploadId: string, lastModified: number, targetFolderId?: string | null) {
+    return api.post('/vfs/upload/resume', {
+      upload_id: uploadId,
+      last_modified: lastModified,
+      target_folder_id: targetFolderId || null,
+    });
   },
   /**
    * 取消分塊上傳

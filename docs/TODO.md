@@ -187,3 +187,8 @@
 - [ ] 4. **前端 API 與 Store 修改**：
   - 更新 `src/api/vfs.ts` 提供 `resumeUpload` 呼叫。
   - 修改 `src/stores/vfs.ts` 的 `executeUploadTask`，在發現快取時呼叫 `resumeUpload` 而非 `getUploadStatus`。若因衝突而回傳錯誤，則自動清除 LocalStorage 快取並退回正常的重新上傳流程。
+- [ ] 5. **活躍上傳會話管理與操作介面 (UX 優化)**：
+  - 後端新增 API (`GET /upload/sessions`)，配合 Redis Pipeline 批次查詢 `SCARD` 以高效回傳所有活躍 `UploadSession` 清單與當前進度。
+  - 前端擴充上傳面板功能：在現有的「進度顯示」與「取消」之外，**補上「暫停」按鈕**。
+  - 前端實作「上傳任務暫存區 (Staging Area)」。當使用者按下「暫停」時，不執行物理刪除 (cancel)，而是將該 `upload_session` 移入暫存區列表保存，允許後續隨時點擊恢復 (Resume)。
+  - 暫存區需清楚標示各任務的進度與「失效倒數時間 (TTL)」，避免任務過期被 GC 清除。

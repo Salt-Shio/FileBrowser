@@ -116,7 +116,7 @@ async def init_upload(
         filename=data.filename,
         total_size=data.total_size,
         chunk_size=data.chunk_size,
-        expected_hash=data.expected_hash,
+        last_modified=data.last_modified,
         owner_id=current_user.id,
         target_folder_id=data.target_folder_id
     )
@@ -152,18 +152,20 @@ async def upload_chunk(
     }
 
 
-@router.get("/upload/status/{upload_id}", response_model=schemas.vfs.UploadStatusResponse)
-async def get_upload_status(
-    upload_id: str,
+@router.post("/upload/resume", response_model=schemas.vfs.UploadStatusResponse)
+async def resume_upload(
+    data: schemas.vfs.UploadResumeRequest,
     service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
 ) -> schemas.vfs.UploadStatusResponse:
     """
-    查詢分塊上傳進度，返回已成功上傳的分塊列表與缺失的分塊列表。
+    發起斷點續傳，驗證檔案特徵並獲取進度狀態與缺失分塊。
     """
-    return await service.get_upload_status(
-        upload_id=upload_id,
-        owner_id=current_user.id
+    return await service.resume_upload(
+        upload_id=data.upload_id,
+        owner_id=current_user.id,
+        target_folder_id=data.target_folder_id,
+        last_modified=data.last_modified
     )
 
 
