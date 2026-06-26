@@ -34,6 +34,7 @@ export interface BrowseResponse {
 export interface UploadTask {
   id: string; // 隨機或雜湊的前端臨時 ID (我們可以用 `${filename}-${file.size}-${file.lastModified}`)
   uploadId?: string; // 後端傳回的 upload_id
+  uploadToken?: string; // 後端傳回的防護金鑰
   filename: string;
   file: File;
   progress: number; // 0 - 100

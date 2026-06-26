@@ -278,6 +278,7 @@ export const useVfsStore = defineStore('vfs', () => {
           uploadId = statusRes.data.upload_id;
           task.uploadedChunks = statusRes.data.uploaded_chunks || [];
           task.uploadId = uploadId;
+          task.uploadToken = statusRes.data.upload_token;
         } catch (statusErr) {
           // 若獲取失敗，代表會話已失效、防呆驗證不通過，或目標目錄衝突，清除快取重新開始
           localStorage.removeItem(cacheKey);
@@ -289,7 +290,8 @@ export const useVfsStore = defineStore('vfs', () => {
         const initRes = await vfsApi.initUpload(task.filename, task.file.size, CHUNK_SIZE, task.file.lastModified, folderId);
         uploadId = initRes.data.upload_id;
         task.uploadId = uploadId;
-        task.uploadedChunks = [];
+        task.uploadToken = initRes.data.upload_token;
+        task.uploadedChunks = initRes.data.uploaded_chunks || [];
         localStorage.setItem(cacheKey, uploadId);
       }
 
@@ -324,6 +326,7 @@ export const useVfsStore = defineStore('vfs', () => {
             await vfsApi.uploadChunk(
               uploadId,
               i,
+              task.uploadToken!,
               chunkBlob,
               (progressEvent) => {
                 if (progressEvent.total) {
@@ -337,6 +340,9 @@ export const useVfsStore = defineStore('vfs', () => {
           } catch (err: any) {
             if (axios.isCancel(err)) {
               throw err; // 若為使用者主動取消，直接拋出不重試
+            }
+            if (err.response?.status === 401) {
+              throw err; // 401 錯誤代表會話被劫持，不重試直接終止
             }
             retries--;
             if (retries === 0) {
@@ -355,7 +361,7 @@ export const useVfsStore = defineStore('vfs', () => {
       // 5. 結算合併
       if (task.status === 'uploading') {
         task.status = 'finalizing'; // 合併中的狀態
-        await vfsApi.finalizeUpload(uploadId);
+        await vfsApi.finalizeUpload(uploadId, task.uploadToken!);
         task.status = 'success';
         task.progress = 100;
         localStorage.removeItem(cacheKey);

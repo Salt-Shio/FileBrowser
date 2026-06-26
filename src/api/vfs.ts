@@ -99,6 +99,7 @@ export const vfsApi = {
   uploadChunk(
     uploadId: string,
     chunkIndex: number,
+    uploadToken: string,
     fileChunk: Blob,
     onUploadProgress?: (progressEvent: any) => void,
     cancelToken?: any
@@ -106,6 +107,7 @@ export const vfsApi = {
     const formData = new FormData();
     formData.append('upload_id', uploadId);
     formData.append('chunk_index', chunkIndex.toString());
+    formData.append('upload_token', uploadToken);
     formData.append('file', fileChunk, 'chunk');
     return api.post('/vfs/upload/chunk', formData, {
       headers: {
@@ -136,9 +138,10 @@ export const vfsApi = {
   /**
    * 結算完成上傳
    */
-  finalizeUpload(uploadId: string) {
+  finalizeUpload(uploadId: string, uploadToken: string) {
     return api.post('/vfs/upload/finalize', {
       upload_id: uploadId,
+      upload_token: uploadToken,
     });
   },
 };

@@ -126,6 +126,8 @@ class UploadInitResponse(BaseModel):
     upload_id: str
     filename: str
     total_chunks: int
+    upload_token: str
+    uploaded_chunks: List[int] = []
 
 
 class UploadChunkResponse(BaseModel):
@@ -141,6 +143,7 @@ class UploadFinalizeRequest(BaseModel):
     結算上傳請求模型
     """
     upload_id: str
+    upload_token: str
 
 
 class UploadStatusResponse(BaseModel):
@@ -148,10 +151,10 @@ class UploadStatusResponse(BaseModel):
     上傳進度探測回傳模型
     """
     upload_id: str
+    upload_token: str
     filename: str
     total_chunks: int
     uploaded_chunks: List[int]
-    missing_chunks: List[int]
 
 
 class UploadCancelRequest(BaseModel):

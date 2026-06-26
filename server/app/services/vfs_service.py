@@ -562,9 +562,10 @@ class VFSService:
         last_modified: int,
         owner_id: str,
         target_folder_id: Optional[str] = None
-    ) -> UploadSession:
+    ) -> tuple[UploadSession, list[int]]:
         """
         初始化分塊上傳會話 (Step 4.3 第一階段)。
+        回傳 (UploadSession, uploaded_chunks)
         """
         # 1. 決定目標目錄並驗證權限
         if target_folder_id is None:
@@ -601,8 +602,18 @@ class VFSService:
                 # 主動將其銷毀以解除死鎖，放行本次全新上傳
                 await self.cancel_upload(conflict_session.id, owner_id)
             else:
-                # 檔案特徵一模一樣，可能正在別的分頁積極上傳中，嚴格拒絕以保護該上傳
-                raise BaseBusinessException(f"同名檔案 '{filename}' 的上傳會話已在進行中，請勿重複上傳", status_code=400)
+                # 檔案特徵一模一樣，執行合法會話劫持 (Session Takeover)
+                from app.security import tokens
+                conflict_session.upload_token = tokens.generate_fencing_token()
+                await self.db.commit()
+                await self.db.refresh(conflict_session)
+                
+                # 從 Redis 取得進度
+                progress_key = f"vfs:upload_progress:{conflict_session.id}"
+                uploaded_chunks_str = await self.redis_client.smembers(progress_key)
+                uploaded_chunks = [int(x) for x in uploaded_chunks_str]
+                
+                return conflict_session, uploaded_chunks
 
         # 4. 計算分塊數並建立上傳會話
         total_chunks = (total_size + chunk_size - 1) // chunk_size if chunk_size > 0 else 0
@@ -623,12 +634,13 @@ class VFSService:
         # 5. 預分配 Sparse File 實體空間
         await self.storage.init_sparse_file(session.id, total_size)
         
-        return session
+        return session, []
 
     async def upload_chunk(
         self,
         upload_id: str,
         chunk_index: int,
+        upload_token: str,
         chunk_data: bytes,
         owner_id: str
     ) -> None:
@@ -643,7 +655,11 @@ class VFSService:
         if not session:
             raise UploadSessionNotFoundError()
 
-        # 2. IDOR 安全防禦：確保上傳者是會話擁有人
+        # 2. Token 與 IDOR 安全防禦
+        if session.upload_token != upload_token:
+            from app.core.exceptions import BaseBusinessException
+            raise BaseBusinessException("會話已被其他端點接管，拒絕存取", status_code=401)
+            
         if session.owner_id != owner_id:
             raise PermissionDeniedError("無權存取此上傳會話")
 
@@ -663,7 +679,8 @@ class VFSService:
     async def finalize_upload(
         self,
         upload_id: str,
-        owner_id: str
+        owner_id: str,
+        upload_token: str
     ) -> File:
         """
         物理合併暫存碎片、進行雜湊校驗、在資料庫完成虛擬「入籍」，最後清理暫存區 (Step 4.3 第三階段)。
@@ -675,6 +692,10 @@ class VFSService:
 
         if not session:
             raise UploadSessionNotFoundError()
+
+        if session.upload_token != upload_token:
+            from app.core.exceptions import BaseBusinessException
+            raise BaseBusinessException("會話已被其他端點接管，拒絕結算", status_code=401)
 
         if session.owner_id != owner_id:
             raise PermissionDeniedError("無權存取此上傳會話")
@@ -805,24 +826,23 @@ class VFSService:
             session.target_folder_id = target_folder_id
             await self.db.commit()
 
+        # 4.5. 合法會話劫持 (Session Takeover)
+        from app.security import tokens
+        session.upload_token = tokens.generate_fencing_token()
+        await self.db.commit()
+        await self.db.refresh(session)
+
         # 5. 從 Redis 讀取實體已存在的分塊列表
         progress_key = f"vfs:upload_progress:{upload_id}"
         uploaded_chunks_str = await self.redis_client.smembers(progress_key)
         uploaded_chunks = [int(x) for x in uploaded_chunks_str]
-        uploaded_chunks.sort()
-
-        # 6. 計算缺失分塊 (差集)
-        all_chunks_set = set(range(session.total_chunks))
-        uploaded_chunks_set = set(uploaded_chunks)
-        missing_chunks = list(all_chunks_set - uploaded_chunks_set)
-        missing_chunks.sort()
 
         return {
             "upload_id": session.id,
+            "upload_token": session.upload_token,
             "filename": session.filename,
             "total_chunks": session.total_chunks,
-            "uploaded_chunks": uploaded_chunks,
-            "missing_chunks": missing_chunks
+            "uploaded_chunks": uploaded_chunks
         }
 
     async def cancel_upload(

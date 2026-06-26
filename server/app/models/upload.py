@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, BigInteger, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.security import tokens
 
 class UploadSession(Base):
     """
@@ -20,6 +21,9 @@ class UploadSession(Base):
 
     # 1. 唯一會話識別碼 (作為 upload_id)
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    
+    # 1.5. 會話劫持防護金鑰 (Fencing Token)
+    upload_token = Column(String(64), default=tokens.generate_fencing_token, nullable=False)
     
     # 2. 擁有者 (用於 IDOR 防護，確保只有本人能續傳碎片)
     owner_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)

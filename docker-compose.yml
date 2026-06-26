@@ -9,6 +9,7 @@ services:
       - server/.env
     volumes:
       - ./server/app:/app/app
+      - ./server/alembic:/app/alembic
       - ./db:/app/db
       - ./data:/app/data
 

@@ -112,7 +112,7 @@ async def init_upload(
     """
     初始化分塊上傳會話 (Step 4.3 第一階段)。
     """
-    session = await service.init_upload(
+    session, uploaded_chunks = await service.init_upload(
         filename=data.filename,
         total_size=data.total_size,
         chunk_size=data.chunk_size,
@@ -123,7 +123,9 @@ async def init_upload(
     return {
         "upload_id": session.id,
         "filename": session.filename,
-        "total_chunks": session.total_chunks
+        "total_chunks": session.total_chunks,
+        "upload_token": session.upload_token,
+        "uploaded_chunks": uploaded_chunks
     }
 
 
@@ -131,6 +133,7 @@ async def init_upload(
 async def upload_chunk(
     upload_id: str = Form(..., description="上傳會話 UUID"),
     chunk_index: int = Form(..., description="分塊索引號 (0 起始)"),
+    upload_token: str = Form(..., description="會話防護金鑰"),
     file: UploadFile = File(..., description="分塊二進制數據"),
     service: VFSService = Depends(deps.get_vfs_service),
     current_user: User = Depends(deps.get_current_user)
@@ -143,6 +146,7 @@ async def upload_chunk(
     await service.upload_chunk(
         upload_id=upload_id,
         chunk_index=chunk_index,
+        upload_token=upload_token,
         chunk_data=chunk_data,
         owner_id=current_user.id
     )
@@ -195,7 +199,8 @@ async def finalize_upload(
     """
     return await service.finalize_upload(
         upload_id=data.upload_id,
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        upload_token=data.upload_token
     )
 
 
