@@ -36,9 +36,13 @@ export interface UploadTask {
   uploadId?: string; // 後端傳回的 upload_id
   uploadToken?: string; // 後端傳回的防護金鑰
   filename: string;
-  file: File;
+  file?: File;
+  targetFolderId?: string | null;
+  totalSize: number;
+  totalChunks: number;
+  lastModified: number;
   progress: number; // 0 - 100
-  status: 'checking' | 'uploading' | 'finalizing' | 'success' | 'failed' | 'canceled';
+  status: 'waiting_for_file' | 'checking' | 'uploading' | 'finalizing' | 'success' | 'failed' | 'paused';
   uploadedChunks: number[];
   cancelSource?: any; // 用於取消 Axios 請求的 CancelTokenSource
 }

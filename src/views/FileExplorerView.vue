@@ -43,9 +43,12 @@ const miniBreadcrumbs = ref<any[]>([]);
 const miniSubfolders = ref<Folder[]>([]);
 const miniLoading = ref(false);
 
-// 頁面載入時自動拉取 VFS 根目錄內容
+// 頁面載入時自動拉取 VFS 根目錄內容與活躍上傳任務
 onMounted(async () => {
-  await vfsStore.fetchDirectory();
+  await Promise.all([
+    vfsStore.fetchDirectory(),
+    vfsStore.fetchActiveTasksAction()
+  ]);
 });
 
 // 計算 Root 資料夾作為左側目錄樹的起點
@@ -242,6 +245,30 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
   }
 };
 
+const pauseUpload = (taskId: string) => {
+  vfsStore.pauseUploadAction(taskId);
+};
+
+const resumeUpload = (taskId: string) => {
+  vfsStore.resumeUploadTaskAction(taskId);
+};
+
+const resumeFileInput = ref<HTMLInputElement | null>(null);
+const currentResumeTaskId = ref('');
+
+const triggerResumeFileInput = (taskId: string) => {
+  currentResumeTaskId.value = taskId;
+  resumeFileInput.value?.click();
+};
+
+const handleResumeFileChange = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (!target.files || target.files.length === 0) return;
+  const file = target.files[0];
+  vfsStore.resumeUploadTaskAction(currentResumeTaskId.value, file);
+  target.value = '';
+};
+
 const cancelUpload = async (taskId: string) => {
   await vfsStore.cancelUploadAction(taskId);
 };
@@ -261,11 +288,13 @@ const formatBytes = (bytes: number, decimals = 2) => {
 
 const getStatusLabel = (status: string) => {
   switch (status) {
+    case 'waiting_for_file': return '等待補檔';
     case 'checking': return '探測中';
     case 'uploading': return '上傳中';
     case 'finalizing': return '合併中...';
     case 'success': return '成功';
     case 'failed': return '失敗';
+    case 'paused': return '已暫停';
     case 'canceled': return '已取消';
     default: return status;
   }
@@ -342,6 +371,12 @@ const getStatusLabel = (status: string) => {
                 class="hidden" 
                 multiple 
                 @change="handleFileChange" 
+              />
+              <input 
+                type="file" 
+                ref="resumeFileInput" 
+                class="hidden" 
+                @change="handleResumeFileChange" 
               />
             </div>
           </div>
@@ -677,19 +712,62 @@ const getStatusLabel = (status: string) => {
           <!-- 操作：取消與狀態 -->
           <div class="flex items-center justify-between text-xs mt-1">
             <span class="text-mono-200">
-              {{ formatBytes(task.file.size) }}
+              {{ formatBytes(task.totalSize) }}
             </span>
-            <button 
-              v-if="task.status === 'uploading' || task.status === 'checking'"
-              @click="cancelUpload(task.id)"
-              class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
-            >
-              取消
-            </button>
-            <span v-else-if="task.status === 'finalizing'" class="text-yellow-400 font-extrabold animate-pulse">合併中...</span>
-            <span v-else-if="task.status === 'success'" class="text-green-400 font-extrabold">✓ 已完成</span>
-            <span v-else-if="task.status === 'failed'" class="text-red-500 font-extrabold">✗ 失敗</span>
-            <span v-else-if="task.status === 'canceled'" class="text-mono-300 italic">已取消</span>
+            <div class="flex items-center gap-2">
+              <template v-if="task.status === 'uploading' || task.status === 'checking'">
+                <button 
+                  @click="pauseUpload(task.id)"
+                  class="text-yellow-400 hover:text-yellow-300 font-extrabold cursor-pointer border border-transparent hover:border-yellow-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  暫停
+                </button>
+              </template>
+              <template v-else-if="task.status === 'paused'">
+                <button 
+                  @click="resumeUpload(task.id)"
+                  class="text-green-400 hover:text-green-300 font-extrabold cursor-pointer border border-transparent hover:border-green-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  繼續
+                </button>
+                <button 
+                  @click="cancelUpload(task.id)"
+                  class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  刪除
+                </button>
+              </template>
+              <template v-else-if="task.status === 'waiting_for_file'">
+                <button 
+                  @click="triggerResumeFileInput(task.id)"
+                  class="text-yellow-400 hover:text-yellow-300 font-extrabold cursor-pointer border border-transparent hover:border-yellow-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  繼續上傳 (補檔)
+                </button>
+                <button 
+                  @click="cancelUpload(task.id)"
+                  class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  刪除
+                </button>
+              </template>
+              <template v-else-if="task.status === 'failed'">
+                <button 
+                  @click="resumeUpload(task.id)"
+                  class="text-blue-400 hover:text-blue-300 font-extrabold cursor-pointer border border-transparent hover:border-blue-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  重試
+                </button>
+                <button 
+                  @click="cancelUpload(task.id)"
+                  class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
+                >
+                  刪除
+                </button>
+              </template>
+              <span v-else-if="task.status === 'finalizing'" class="text-yellow-400 font-extrabold animate-pulse">合併中...</span>
+              <span v-else-if="task.status === 'success'" class="text-green-400 font-extrabold">✓ 已完成</span>
+            </div>
           </div>
         </div>
       </div>

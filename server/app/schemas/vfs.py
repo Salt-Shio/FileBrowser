@@ -170,3 +170,24 @@ class UploadCancelResponse(BaseModel):
     """
     message: str
     upload_id: str
+
+
+class ActiveSessionItem(BaseModel):
+    """
+    活躍上傳任務清單項目模型
+    """
+    upload_id: str
+    filename: str
+    target_folder_id: Optional[str]
+    total_size: int
+    total_chunks: int
+    uploaded_chunks_count: int
+    created_at: datetime
+    last_modified: int
+
+
+class ActiveSessionsResponse(BaseModel):
+    """
+    活躍上傳任務回傳模型
+    """
+    sessions: List[ActiveSessionItem]

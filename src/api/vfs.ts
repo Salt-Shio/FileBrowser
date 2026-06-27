@@ -144,4 +144,10 @@ export const vfsApi = {
       upload_token: uploadToken,
     });
   },
+  /**
+   * 獲取伺服器端活躍的上傳會話
+   */
+  getActiveSessions() {
+    return api.get('/vfs/upload/sessions');
+  },
 };

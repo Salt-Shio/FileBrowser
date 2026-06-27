@@ -28,7 +28,7 @@ export const useVfsStore = defineStore('vfs', () => {
 
   // 用於左側樹狀目錄的快取結構：key 為 folderId, value 為該目錄下的子項
   const directoryCache = reactive<Record<string, { folders: Folder[]; files: FileItem[] }>>({});
-  
+
   // 記錄哪些資料夾目前在左側目錄樹是展開的
   const expandedFolders = reactive<Record<string, boolean>>({});
 
@@ -42,7 +42,7 @@ export const useVfsStore = defineStore('vfs', () => {
     try {
       const response = await vfsApi.listDirectory(folderId);
       const data = response.data;
-      
+
       currentFolder.value = data.current_folder;
       breadcrumbs.value = data.breadcrumbs;
       subfolders.value = data.subfolders;
@@ -74,7 +74,7 @@ export const useVfsStore = defineStore('vfs', () => {
    */
   function toggleFolderExpand(folderId: string) {
     expandedFolders[folderId] = !expandedFolders[folderId];
-    
+
     // 如果展開且快取中還沒有資料，就順便載入一下
     if (expandedFolders[folderId] && !directoryCache[folderId]) {
       fetchDirectory(folderId);
@@ -90,12 +90,12 @@ export const useVfsStore = defineStore('vfs', () => {
     try {
       const pid = parentId || currentFolder.value?.id || null;
       await vfsApi.createFolder(name, pid);
-      
+
       // 清除父目錄的目錄樹快取，確保重新拉取最新目錄樹
       if (pid) {
         delete directoryCache[pid];
       }
-      
+
       // 重新載入當前目錄
       await fetchDirectory(currentFolder.value?.id);
     } catch (e: any) {
@@ -115,12 +115,12 @@ export const useVfsStore = defineStore('vfs', () => {
     error.value = null;
     try {
       await vfsApi.renameNode(nodeId, nodeType, newName);
-      
+
       // 清除當前目錄快取以刷新樹狀選單的顯示名稱
       if (currentFolder.value) {
         delete directoryCache[currentFolder.value.id];
       }
-      
+
       await fetchDirectory(currentFolder.value?.id);
     } catch (e: any) {
       console.error('Failed to rename node:', e);
@@ -139,7 +139,7 @@ export const useVfsStore = defineStore('vfs', () => {
     error.value = null;
     try {
       await vfsApi.moveNode(nodeId, nodeType, targetParentId);
-      
+
       // 清除來源目錄快取與目標目錄快取
       if (currentFolder.value) {
         delete directoryCache[currentFolder.value.id];
@@ -147,7 +147,7 @@ export const useVfsStore = defineStore('vfs', () => {
       if (targetParentId) {
         delete directoryCache[targetParentId];
       }
-      
+
       await fetchDirectory(currentFolder.value?.id);
     } catch (e: any) {
       console.error('Failed to move node:', e);
@@ -166,12 +166,12 @@ export const useVfsStore = defineStore('vfs', () => {
     error.value = null;
     try {
       await vfsApi.deleteNode(nodeId, nodeType);
-      
+
       // 清除當前目錄快取
       if (currentFolder.value) {
         delete directoryCache[currentFolder.value.id];
       }
-      
+
       await fetchDirectory(currentFolder.value?.id);
     } catch (e: any) {
       console.error('Failed to delete node:', e);
@@ -248,33 +248,43 @@ export const useVfsStore = defineStore('vfs', () => {
   function updateTaskProgress(task: UploadTask, totalChunks: number, currentChunkIndex?: number, currentChunkProgress: number = 0) {
     const uploadedCount = task.uploadedChunks.length;
     let totalProgress = (uploadedCount / totalChunks);
-    
+
     // 如果傳入當前正在上傳的分塊進度，加權進去
     if (currentChunkIndex !== undefined && !task.uploadedChunks.includes(currentChunkIndex)) {
       totalProgress += (currentChunkProgress / totalChunks);
     }
-    
+
     task.progress = Math.min(Math.round(totalProgress * 100), 99); // 結算前最多到 99%
   }
 
   /**
    * 執行分塊上傳核心邏輯，支援工業級斷點續傳
    */
+  /**
+   * 執行分塊上傳核心邏輯，支援工業級斷點續傳
+   */
   async function executeUploadTask(task: UploadTask) {
+    if (!task.file) {
+      error.value = `任務 ${task.filename} 缺少實體檔案，無法執行上傳`;
+      task.status = 'failed';
+      return;
+    }
+
     const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
-    const totalChunks = Math.ceil(task.file.size / CHUNK_SIZE) || 1;
+    const totalChunks = Math.ceil(task.totalSize / CHUNK_SIZE) || 1;
+    task.totalChunks = totalChunks;
     let uploadId = '';
 
     try {
-      // 1. 檢查 LocalStorage 是否有此 taskId 的上傳會話映射
+      // 1. 檢查 LocalStorage 是否有此 taskId 的上傳會話映射 (或者任務本身已帶有 uploadId)
       const cacheKey = `vfs_upload_id_${task.id}`;
-      const cachedUploadId = localStorage.getItem(cacheKey);
+      const cachedUploadId = task.uploadId || localStorage.getItem(cacheKey);
 
       if (cachedUploadId) {
         task.status = 'checking';
         try {
-          const folderId = currentFolder.value?.id || null;
-          const statusRes = await vfsApi.resumeUpload(cachedUploadId, task.file.lastModified, folderId);
+          const folderId = currentFolder.value?.id || task.targetFolderId || null;
+          const statusRes = await vfsApi.resumeUpload(cachedUploadId, task.lastModified, folderId);
           uploadId = statusRes.data.upload_id;
           task.uploadedChunks = statusRes.data.uploaded_chunks || [];
           task.uploadId = uploadId;
@@ -282,12 +292,13 @@ export const useVfsStore = defineStore('vfs', () => {
         } catch (statusErr) {
           // 若獲取失敗，代表會話已失效、防呆驗證不通過，或目標目錄衝突，清除快取重新開始
           localStorage.removeItem(cacheKey);
+          task.uploadId = undefined;
         }
       }
 
       if (!uploadId) {
         const folderId = currentFolder.value?.id || null;
-        const initRes = await vfsApi.initUpload(task.filename, task.file.size, CHUNK_SIZE, task.file.lastModified, folderId);
+        const initRes = await vfsApi.initUpload(task.filename, task.totalSize, CHUNK_SIZE, task.lastModified, folderId);
         uploadId = initRes.data.upload_id;
         task.uploadId = uploadId;
         task.uploadToken = initRes.data.upload_token;
@@ -303,8 +314,8 @@ export const useVfsStore = defineStore('vfs', () => {
 
       // 4. 開始上傳分塊
       for (let i = 0; i < totalChunks; i++) {
-        // 檢查是否已被取消
-        if ((task.status as string) === 'canceled') return;
+        // 檢查是否已被暫停或取消
+        if ((task.status as string) === 'paused' || (task.status as string) === 'canceled') return;
 
         // 若該分塊已上傳，更新進度後跳過
         if (task.uploadedChunks.includes(i)) {
@@ -313,7 +324,7 @@ export const useVfsStore = defineStore('vfs', () => {
         }
 
         const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, task.file.size);
+        const end = Math.min(start + CHUNK_SIZE, task.totalSize);
         const chunkBlob = task.file.slice(start, end);
 
         // 每塊上傳
@@ -339,7 +350,7 @@ export const useVfsStore = defineStore('vfs', () => {
             success = true;
           } catch (err: any) {
             if (axios.isCancel(err)) {
-              throw err; // 若為使用者主動取消，直接拋出不重試
+              throw err; // 若為使用者主動取消/暫停，直接拋出不重試
             }
             if (err.response?.status === 401) {
               throw err; // 401 錯誤代表會話被劫持，不重試直接終止
@@ -376,12 +387,54 @@ export const useVfsStore = defineStore('vfs', () => {
       }
     } catch (e: any) {
       if (axios.isCancel(e)) {
-        task.status = 'canceled';
+        task.status = 'paused';
       } else {
         console.error(`Failed to upload task ${task.id}:`, e);
         task.status = 'failed';
         error.value = e.response?.data?.detail || '檔案上傳失敗';
       }
+    }
+  }
+
+  /**
+   * 初始化並載入所有伺服器端活躍任務 (正向補齊與反向 GC 清理)
+   */
+  async function fetchActiveTasksAction() {
+    try {
+      const res = await vfsApi.getActiveSessions();
+      const sessions = res.data.sessions || [];
+      const sessionMap = new Map<string, any>(sessions.map((s: any) => [s.upload_id, s]));
+
+      // 1. 反向清理 (幽靈任務防呆)：若本地任務是 waiting 或 paused，但伺服器說它不存在了，代表被伺服器 GC 刪除，移除本地任務
+      for (let i = uploadTasks.value.length - 1; i >= 0; i--) {
+        const t = uploadTasks.value[i];
+        if (t.status === 'waiting_for_file' || t.status === 'paused') {
+          if (t.uploadId && !sessionMap.has(t.uploadId)) {
+            uploadTasks.value.splice(i, 1);
+          }
+        }
+      }
+
+      // 2. 正向補齊：走訪伺服器任務，若本地沒有這個任務，就把它加進來當作 waiting_for_file
+      for (const s of sessions) {
+        const exists = uploadTasks.value.find(t => t.uploadId === s.upload_id);
+        if (!exists) {
+          uploadTasks.value.push({
+            id: s.upload_id, // 直接拿 upload_id 當前端 ID
+            uploadId: s.upload_id,
+            filename: s.filename,
+            targetFolderId: s.target_folder_id,
+            totalSize: s.total_size,
+            totalChunks: s.total_chunks,
+            lastModified: s.last_modified,
+            progress: s.total_chunks > 0 ? Math.round((s.uploaded_chunks_count / s.total_chunks) * 100) : 0,
+            status: 'waiting_for_file',
+            uploadedChunks: [], // 尚未取得詳細陣列，先放空
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch active sessions:', e);
     }
   }
 
@@ -401,12 +454,14 @@ export const useVfsStore = defineStore('vfs', () => {
       id: taskId,
       filename: file.name,
       file,
+      totalSize: file.size,
+      totalChunks: 0,
+      lastModified: file.lastModified,
       progress: 0,
       status: 'checking',
       uploadedChunks: [],
     });
 
-    // 如果之前有失敗或取消的，先移除再加，或是直接取代
     const index = uploadTasks.value.findIndex(t => t.id === taskId);
     if (index !== -1) {
       uploadTasks.value[index] = newTask;
@@ -418,7 +473,51 @@ export const useVfsStore = defineStore('vfs', () => {
   }
 
   /**
-   * 取消上傳任務
+   * 暫停上傳任務 (僅中斷前端發送請求，保留後端紀錄)
+   */
+  function pauseUploadAction(taskId: string) {
+    const task = uploadTasks.value.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.cancelSource) {
+      task.cancelSource.cancel('User paused the upload');
+    } else {
+      task.status = 'paused';
+    }
+  }
+
+  /**
+   * 恢復上傳任務 (支援 F5 重新整理後選檔恢復)
+   */
+  function resumeUploadTaskAction(taskId: string, file?: File) {
+    const task = uploadTasks.value.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.status === 'waiting_for_file') {
+      if (!file) {
+        error.value = "必須選擇檔案才能恢復上傳";
+        return;
+      }
+      // 嚴格校驗檔案特徵
+      if (file.name !== task.filename || file.lastModified !== task.lastModified || file.size !== task.totalSize) {
+        error.value = `檔案特徵不符：請選擇正確的 ${task.filename} 檔案`;
+        return;
+      }
+      task.file = file;
+      task.status = 'checking';
+      executeUploadTask(task);
+    } else if (task.status === 'paused' || task.status === 'failed') {
+      if (!task.file) {
+        task.status = 'waiting_for_file'; // 記憶體沒檔案了，要求補檔
+        return;
+      }
+      task.status = 'checking';
+      executeUploadTask(task);
+    }
+  }
+
+  /**
+   * 取消上傳任務 (中斷請求並通知後端刪除)
    */
   async function cancelUploadAction(taskId: string) {
     const task = uploadTasks.value.find(t => t.id === taskId);
@@ -429,7 +528,7 @@ export const useVfsStore = defineStore('vfs', () => {
       task.cancelSource.cancel('User canceled the upload');
     }
 
-    task.status = 'canceled';
+    task.status = 'canceled' as any;
 
     // 2. 呼叫後端 cancel
     if (task.uploadId) {
@@ -443,6 +542,7 @@ export const useVfsStore = defineStore('vfs', () => {
     // 3. 清理快取
     const cacheKey = `vfs_upload_id_${task.id}`;
     localStorage.removeItem(cacheKey);
+    removeTask(task.id);
   }
 
   /**
@@ -456,11 +556,11 @@ export const useVfsStore = defineStore('vfs', () => {
   }
 
   /**
-   * 清除所有已結束 (非進行中) 的任務
+   * 清除所有已結束 (非進行中/非暫停/非等待) 的任務
    */
   function clearFinishedTasksAction() {
     uploadTasks.value = uploadTasks.value.filter(
-      t => t.status === 'uploading' || t.status === 'checking' || t.status === 'finalizing'
+      t => ['uploading', 'checking', 'finalizing', 'paused', 'waiting_for_file'].includes(t.status)
     );
   }
 
@@ -482,7 +582,10 @@ export const useVfsStore = defineStore('vfs', () => {
     deleteNode,
     clearState,
     downloadFileAction,
+    fetchActiveTasksAction,
     addUploadTaskAction,
+    pauseUploadAction,
+    resumeUploadTaskAction,
     cancelUploadAction,
     clearFinishedTasksAction,
   };

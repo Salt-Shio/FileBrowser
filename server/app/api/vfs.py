@@ -154,6 +154,16 @@ async def upload_chunk(
         "message": "分塊上傳成功",
         "chunk_index": chunk_index
     }
+@router.get("/upload/sessions", response_model=schemas.vfs.ActiveSessionsResponse)
+async def get_active_sessions(
+    service: VFSService = Depends(deps.get_vfs_service),
+    current_user: User = Depends(deps.get_current_user)
+) -> schemas.vfs.ActiveSessionsResponse:
+    """
+    獲取當前使用者所有尚未結算的活躍上傳任務清單與進度。
+    """
+    return await service.get_active_sessions(owner_id=current_user.id)
+
 
 
 @router.post("/upload/resume", response_model=schemas.vfs.UploadStatusResponse)

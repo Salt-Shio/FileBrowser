@@ -93,7 +93,7 @@
 
 ## Phase 5.7: VFS 第 4 階段 - 大檔案上傳韌性強化 (Keep-Alive 衍伸問題)
 - [ ] 1. **正式環境連線設定 (Production Parity)**: 開發環境已於 `vite.config.ts` 啟用 Keep-Alive，但正式部署時須在 Nginx 或 Traefik 代理設定中明確啟用對後端 `upstream` 的 `keepalive`，否則正式環境的斷線問題將會重現。
-- [ ] 2. **前端靜默重試機制 (Retry Mechanism)**: 雖 Keep-Alive 解決了高頻率連線切換 of 底層阻塞，但遇到一般實體網路瞬斷或抖動時，仍會因為單個 chunk 失敗導致整個 3GB 檔案前功盡棄。需在不影響架構的前提下，於前端上傳迴圈中加入單個分塊的自動重試防護。
+- [x] 2. **前端靜默重試機制 (Retry Mechanism)**: 雖 Keep-Alive 解決了高頻率連線切換 of 底層阻塞，但遇到一般實體網路瞬斷或抖動時，仍會因為單個 chunk 失敗導致整個 3GB 檔案前功盡棄。需在不影響架構的前提下，於前端上傳迴圈中加入單個分塊的自動重試防護。(已於 `vfs.ts` 實作 3 次延遲重試)
 
 ---
 
@@ -157,38 +157,44 @@
 
 ---
 
-## Phase 11: 重新設計大檔案上傳的生命週期與 GC 清理邏輯 [待規劃]
+## Phase 11: 重新設計大檔案上傳的生命週期與 GC 清理邏輯 [已解決 100%]
 
 在 Phase 10 的重構中，我們將上傳進度完全轉交給 Redis 以解決 SQL 效能問題，但這引發了嚴重的業務邏輯 Bug 與架構不合理之處：
 
 - **致命 Bug (活躍狀態判斷斷層)**：SQL 的 `UploadSession.created_at` 從建立後不再更新。若大檔案傳輸過程超過系統設定的 GC 門檻 (如 24 小時)，即使客戶端仍在積極上傳 (Redis TTL 依然活躍)，GC Phase 1 仍會因 SQL 紀錄超時而將活躍會話強行誤殺。
-- **處理方式不合理**：
-  1. 試圖在 GC Phase 1 透過檢查實體檔案的 `mtime` 來防呆是「頭痛醫腳」的解法，沒有從根本上統一 SQL 與 Redis 的生命週期，且破壞了依賴關係的乾淨度。
-  2. 目前 GC Phase 1 刪除 SQL 紀錄時，並未同步主動刪除 Redis Key，導致產生殭屍快取。
 
-**[預期重構目標與解法討論]**：
-必須重新定義「上傳會話過期」的業務規則，明確將其定義為「真正的閒置時間」，而非「絕對的存活時間」。
-可行的設計方向 (待與決策者討論決定)：
-- *方向 A*：是否該由 Redis (作為高頻活躍度唯一基準) 反向主導清理機制？
-- *方向 B*：是否要在 `upload_chunk` 流程中，設計「每 N 個分塊 / 或 N 分鐘」非同步打點更新一次 SQL 的 `updated_at`，以維持 SQL 作為唯一真理的權威性且不引發嚴重效能瓶頸？
-- *方向 C*：GC Phase 1 在依賴 SQL 判斷前，強制加入對 Redis TTL 的校驗，並確保三方 (SQL/Disk/Redis) 的徹底同步刪除。
+**[實作解法]**：
+- [x] GC Phase 1 ( `gc/core.py` 的 `gc_expired_sessions` ) 已實作 Redis 活躍防護校驗。在刪除超時 SQL 會話前，會主動透過 `redis_client.exists` 確認 Redis 是否活躍。
+- [x] 若活躍，自動將 `UploadSession.created_at` 展延至當前時間，保護活躍會話不被誤殺，完美解決斷層問題。
 
 ---
 
-## Phase 12: 跨資料夾斷點續傳支援 (Cross-Folder Resume) [待執行]
+## Phase 12: 跨資料夾斷點續傳支援 (Cross-Folder Resume) [已完成 100%]
 
 目前斷點續傳能跨資料夾觸發，但檔案最終歸宿會被鎖死在最初上傳的資料夾。為了保留不重複傳輸的效能優勢，並符合使用者「在哪個資料夾發起，檔案就落在哪個資料夾」的直覺體驗，預計實作以下改動：
 
-- [ ] 1. **後端 Schema 修改**：新增 `UploadResumeRequest`，讓續傳請求支援傳入 `target_folder_id` (Optional)。
-- [ ] 2. **後端服務層修改**：於 `vfs_service.py` 實作全新的 `resume_upload` 函數。
+- [x] 1. **後端 Schema 修改**：新增 `UploadResumeRequest`，讓續傳請求支援傳入 `target_folder_id` (Optional)。
+- [x] 2. **後端服務層修改**：於 `vfs_service.py` 實作全新的 `resume_upload` 函數。
   - 在改變目標資料夾前，**先做檔名衝突檢查** (包含實體檔案與活躍上傳)。
   - 若無衝突，動態更新 `UploadSession.target_folder_id`。
-- [ ] 3. **後端 API 路由修改**：將原本用來檢查續傳狀態的 `GET /upload/status/{upload_id}` 邏輯轉移或擴充到新的 `POST /upload/resume` 介面，以符合 RESTful 語義。
-- [ ] 4. **前端 API 與 Store 修改**：
+- [x] 3. **後端 API 路由修改**：將原本用來檢查續傳狀態的 `GET /upload/status/{upload_id}` 邏輯轉移或擴充到新的 `POST /upload/resume` 介面，以符合 RESTful 語義。
+- [x] 4. **前端 API 與 Store 修改**：
   - 更新 `src/api/vfs.ts` 提供 `resumeUpload` 呼叫。
   - 修改 `src/stores/vfs.ts` 的 `executeUploadTask`，在發現快取時呼叫 `resumeUpload` 而非 `getUploadStatus`。若因衝突而回傳錯誤，則自動清除 LocalStorage 快取並退回正常的重新上傳流程。
-- [ ] 5. **活躍上傳會話管理與操作介面 (UX 優化)**：
-  - 後端新增 API (`GET /upload/sessions`)，配合 Redis Pipeline 批次查詢 `SCARD` 以高效回傳所有活躍 `UploadSession` 清單與當前進度。
-  - 前端擴充上傳面板功能：在現有的「進度顯示」與「取消」之外，**補上「暫停」按鈕**。
-  - 前端實作「上傳任務暫存區 (Staging Area)」。當使用者按下「暫停」時，不執行物理刪除 (cancel)，而是將該 `upload_session` 移入暫存區列表保存，允許後續隨時點擊恢復 (Resume)。
-  - 暫存區需清楚標示各任務的進度與「失效倒數時間 (TTL)」，避免任務過期被 GC 清除。
+- [x] 5. **活躍上傳會話管理與操作介面 (單一面板 7 態共存 UX 優化)**：
+  - **後端 API 擴充**：
+    - 實作 `GET /api/vfs/upload/sessions`，使用 `SCARD` 與 Redis Pipeline 高效計算每個會話的 `uploaded_chunks_count` 並回傳活躍任務清單。
+  - **前端 Pinia 狀態機改造 (`vfs.ts`)**：
+    - **不分區設計**：所有任務統一在同一個 `uploadTasks` 陣列與 UI 面板中呈現，並藉由擴充至 7 種嚴格的狀態機來驅動 UI 變化：
+      1. `checking`: 初始化檢查中。
+      2. `uploading`: 積極上傳傳輸中。
+      3. `finalizing`: 傳輸完畢，後端合併校驗中。
+      4. `success`: 上傳完成 (顯示綠色，3秒後自動移除)。
+      5. `failed`: 發生致命錯誤 (顯示紅色，需手動點擊 X 移除)。
+      6. `paused`: 手動暫停 (記憶體仍有實體檔案，點擊繼續可無縫恢復)。
+      7. `waiting_for_file`: F5 重新整理後從 API 拉回的歷史任務 (記憶體無檔案，點擊繼續需強制彈出檔案選擇窗，嚴格校驗後恢復)。
+    - **核心 Action 重構與資料融合防護**：
+      - `fetchActiveTasksAction`: 網頁載入時拉取後端 API，比對本地 `uploadTasks` 進行雙向校正：
+        - **正向補齊**：本地不存在的會話，以 `'waiting_for_file'` 加入，避免覆蓋正在上傳的任務。
+        - **反向清理 (幽靈任務防護)**：本地為 `'waiting_for_file'` 或 `'paused'` 的任務若未出現在 API 回傳中，代表已遭後端 GC 清除或被其他裝置取消，應將其從本地陣列中移除或標記為 `failed`。
+      - `pauseUploadAction`: 中斷 Axios 傳輸並轉為 `'paused'`，**嚴禁呼叫後端 cancel API** 以保留實體碎片與 DB 紀錄。

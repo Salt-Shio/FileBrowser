@@ -845,6 +845,46 @@ class VFSService:
             "uploaded_chunks": uploaded_chunks
         }
 
+    async def get_active_sessions(self, owner_id: str) -> Dict[str, Any]:
+        """
+        獲取當前使用者所有活躍的上傳任務清單與進度 (利用 Redis Pipeline SCARD 高效計算)。
+        """
+        # 1. 查詢資料庫中的活躍會話 (按建立時間降冪)
+        stmt = select(UploadSession).where(
+            UploadSession.owner_id == owner_id
+        ).order_by(UploadSession.created_at.desc())
+        
+        result = await self.db.execute(stmt)
+        sessions = result.scalars().all()
+        
+        if not sessions:
+            return {"sessions": []}
+            
+        # 2. 建立 Redis Pipeline 批次獲取每個會話的已上傳碎片數 (SCARD)
+        pipe = self.redis_client.pipeline()
+        for session in sessions:
+            progress_key = f"vfs:upload_progress:{session.id}"
+            pipe.scard(progress_key)
+            
+        # O(1) 網路往返批次執行
+        scard_results = await pipe.execute()
+        
+        # 3. 組裝回應格式
+        active_items = []
+        for session, uploaded_chunks_count in zip(sessions, scard_results):
+            active_items.append({
+                "upload_id": session.id,
+                "filename": session.filename,
+                "target_folder_id": session.target_folder_id,
+                "total_size": session.total_size,
+                "total_chunks": session.total_chunks,
+                "uploaded_chunks_count": uploaded_chunks_count,
+                "created_at": session.created_at,
+                "last_modified": session.last_modified
+            })
+            
+        return {"sessions": active_items}
+
     async def cancel_upload(
         self,
         upload_id: str,
