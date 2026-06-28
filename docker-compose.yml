@@ -19,3 +19,33 @@ services:
     restart: always
     expose:
       - "6379"
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: file-explorer-tailscale
+    hostname: file-server-linux  # 顯示在 Tailscale 後台的機器名稱，可自訂
+    network_mode: host           # 關鍵！讓 Tailscale 直接接管主機網卡
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale # 強制將登入狀態寫入硬碟，避免變成免洗機器
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      # 在專案目錄下建立資料夾保存登入狀態
+      - ./tailscale-data:/var/lib/tailscale
+    restart: unless-stopped
+
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: file-explorer-npm
+    restart: unless-stopped
+    ports:
+      # 這些 Port 會開在 Linux 上，讓 Tailscale 能夠無縫把 100.x 的流量導過來
+      - '80:80'      # HTTP 流量
+      - '81:81'      # NPM 網頁管理後台
+      - '443:443'    # HTTPS 加密流量
+    volumes:
+      - ./npm-data:/data
+      - ./npm-letsencrypt:/etc/letsencrypt

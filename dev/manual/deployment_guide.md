@@ -83,7 +83,7 @@
    - **[Details 頁籤]**：
      - **Domain Names**：`files.yourdomain.com`
      - **Scheme**：`http`
-     - **Forward Hostname / IP**：填入你 File Explorer 的伺服器 IP（如果 NPM 跟 File Explorer 在同一台電腦上，填伺服器的區域網路 IP，例如 `192.168.1.100` 或 Docker Gateway IP，**不要填 `localhost` 或 `127.0.0.1`**，因為在 Docker 裡 localhost 指的是容器自己）。
+     - **Forward Hostname / IP**：填入你 File Explorer 的伺服器 IP（如果 NPM 跟 File Explorer 在同一台電腦上，填伺服器的區域網路 IP，例如 `192.168.1.100` 或 Docker Gateway IP，**不要填 `localhost` 或 `127.0.0.1`**，因為在 Docker 裡 localhost 指的是容器自己），補充: 這裡可以填 Docker 容器名稱
      - **Forward Port**：填入 File Explorer 的埠號（例如 `8000`）。
      - 打勾 `Block Common Exploits` 與 `Websockets Support`。
    - **[SSL 頁籤]**：
