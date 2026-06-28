@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.vscode
+.env
+.env.*
+dev
+docs
+server
+
+# Linux 專用的掛載與憑證資料夾
+npm-data
+npm-letsencrypt
+tailscale-data
+data
+db

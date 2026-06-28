@@ -1,4 +1,13 @@
 services:
+  web:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: file-explorer-web
+    restart: always
+    depends_on:
+      - server
+
   server:
     build: ./server
     container_name: file-explorer-server
