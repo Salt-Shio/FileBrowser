@@ -55,7 +55,7 @@ const handleLegalAccept = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center pt-20 px-4">
+  <div class="flex flex-col items-center justify-start pt-8 px-4 w-full min-h-full">
     <!-- Success State -->
     <BaseCard v-if="stage === 'SUCCESS'">
       <template #header>

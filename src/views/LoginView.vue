@@ -80,7 +80,7 @@ const handleBackToPassword = () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center pt-20 px-4">
+  <div class="flex flex-col items-center justify-start pt-8 px-4 w-full min-h-full">
     <transition name="fade" mode="out-in">
       <!-- 2FA OTP 驗證階段 -->
       <BaseCard v-if="stage === 'OTP'" key="otp-card">

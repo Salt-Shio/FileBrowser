@@ -1,10 +1,16 @@
 <template>
   <div class="min-h-full relative w-full overflow-x-hidden pt-8">
     <!-- Main Content -->
-    <div class="flex flex-col items-center justify-start mt-12 mb-20 w-full px-4">
-      <div class="flex flex-col gap-10 w-full max-w-4xl items-center bg-mono-950/50 p-12 rounded-xl border border-mono-700 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+    <div class="flex flex-col items-center justify-start w-full px-4">
+      <div class="flex flex-col w-full max-w-4xl bg-mono-950/50 rounded-xl border border-mono-700 shadow-[0_4px_20px_rgba(0,0,0,0.5)] overflow-hidden">
         
-        <h2 class="text-2xl font-mono text-mono-50 font-bold w-full border-b border-mono-800 pb-4 mb-4 [text-shadow:0_0_8px_rgba(255,255,255,0.2)]">System / Settings</h2>
+        <!-- Header -->
+        <div class="bg-mono-900/80 backdrop-blur-md h-[70px] px-8 flex items-center shrink-0 border-b border-mono-700">
+          <h2 class="text-sm font-mono text-mono-400 tracking-widest uppercase">System / Settings</h2>
+        </div>
+
+        <!-- Body -->
+        <div class="flex flex-col gap-10 p-8 md:p-12">
 
         <!-- Settings Form -->
         <div class="flex flex-col w-full gap-6">
@@ -73,6 +79,7 @@
              </button>
            </div>
            <p v-if="errorMsg" class="text-red-400 font-mono text-sm bg-red-900/20 px-4 py-2 rounded border border-red-900/30 w-full text-center">{{ errorMsg }}</p>
+        </div>
         </div>
       </div>
     </div>

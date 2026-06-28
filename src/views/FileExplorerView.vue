@@ -304,7 +304,7 @@ const getStatusLabel = (status: string) => {
 <template>
   <div class="min-h-full w-full relative flex flex-col items-center pt-8">
     <!-- 頁面最大寬度容器 -->
-    <div class="w-full max-w-[1500px] px-8 flex flex-col h-full gap-8">
+    <div class="w-full max-w-[1800px] px-8 flex flex-col h-full gap-8">
       
       <!-- 全局錯誤公告 -->
       <div v-if="vfsStore.error" class="w-full bg-red-950/80 border border-red-500 rounded-lg p-4 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)] backdrop-blur-md relative shrink-0">
@@ -317,10 +317,10 @@ const getStatusLabel = (status: string) => {
       </div>
 
       <!-- 主要分欄瀏覽區域 -->
-      <div class="flex flex-col md:flex-row gap-8 w-full h-[70vh]">
+      <div class="flex flex-col md:flex-row gap-8 w-full h-[80vh]">
         
         <!-- 左欄：樹狀目錄導航 -->
-        <div class="bg-mono-950/50 md:w-[320px] shrink-0 flex flex-col overflow-y-auto border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative">
+        <div class="bg-mono-950/50 md:w-[380px] shrink-0 flex flex-col overflow-y-auto border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative">
           <div class="p-4 border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
             <h2 class="font-mono text-mono-400 text-sm tracking-widest uppercase">Directory Tree</h2>
           </div>
@@ -479,7 +479,7 @@ const getStatusLabel = (status: string) => {
         </div>
 
         <!-- 第三欄：傳輸管理 -->
-        <div class="bg-mono-950/50 md:w-[320px] shrink-0 flex flex-col border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
+        <div class="bg-mono-950/50 md:w-[380px] shrink-0 flex flex-col border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
           <div class="p-4 border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm flex items-center justify-between">
             <h2 class="font-mono text-mono-400 text-sm tracking-widest uppercase">Transfers</h2>
             <button 
@@ -510,12 +510,12 @@ const getStatusLabel = (status: string) => {
               </div>
 
               <!-- 進度條 -->
-              <div class="w-full bg-mono-950 border border-mono-700 rounded-full h-2 overflow-hidden relative">
+              <div class="w-full bg-mono-950 border border-mono-700 rounded-full h-4 overflow-hidden relative mt-1 mb-1">
                 <div 
                   class="bg-mono-50 h-full transition-all duration-300"
                   :style="{ width: `${task.progress}%` }"
                 ></div>
-                <span class="absolute inset-0 flex items-center justify-center text-[8px] font-mono font-bold mix-blend-difference text-white">
+                <span class="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-bold mix-blend-difference text-white">
                   {{ task.progress }}%
                 </span>
               </div>
