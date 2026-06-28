@@ -42,7 +42,7 @@
 
 ---
 
-## Phase 5.6: VFS 第 3 階段 - 實體傳輸與分塊上傳 [已完成 70%]
+## Phase 5.6: VFS 第 3 階段 - 實體傳輸與分塊上傳 [已完成 100%]
 - [x] 1. 實作檔案下載功能，點擊下載按鈕時觸發 `/api/vfs/download/{file_id}`。
 - [x] 2. 實作大檔案前端切片，串接分塊上傳三階段工作流 (`/upload/init`, `/upload/chunk`, `/upload/finalize`)。
 - [x] 3. 串接 `/upload/status/{upload_id}` 進行斷點續傳進度探測，支援前端恢復上傳。
@@ -82,8 +82,8 @@
 
 ---
 
-## Phase 5.7: VFS 第 4 階段 - 大檔案上傳韌性強化 (Keep-Alive 衍伸問題)
-- [ ] 1. **正式環境連線設定 (Production Parity)**: 開發環境已於 `vite.config.ts` 啟用 Keep-Alive，但正式部署時須在 Nginx 或 Traefik 代理設定中明確啟用對後端 `upstream` 的 `keepalive`，否則正式環境的斷線問題將會重現。
+## Phase 5.7: VFS 第 4 階段 - 大檔案上傳韌性強化 (Keep-Alive 衍伸問題) [已完成 100%]
+- [x] 1. **正式環境連線設定 (Production Parity)**: 開發環境已於 `vite.config.ts` 啟用 Keep-Alive，但正式部署時須在 Nginx 或 Traefik 代理設定中明確啟用對後端 `upstream` 的 `keepalive`，否則正式環境的斷線問題將會重現。
 - [x] 2. **前端靜默重試機制 (Retry Mechanism)**: 雖 Keep-Alive 解決了高頻率連線切換 of 底層阻塞，但遇到一般實體網路瞬斷或抖動時，仍會因為單個 chunk 失敗導致整個 3GB 檔案前功盡棄。需在不影響架構的前提下，於前端上傳迴圈中加入單個分塊的自動重試防護。(已於 `vfs.ts` 實作 3 次延遲重試)
 
 ---
@@ -102,7 +102,7 @@
 
 ---
 
-## Phase 9: 系統長期架構重構與優化建議 [待規劃]
+## Phase 9: 系統長期架構重構與優化建議 [已完成 100%]
 
 根據架構評估，以下為各模組改用 OOP 與依賴注入 (DI) 的必要性與優先級排序：
 
@@ -128,7 +128,7 @@
 
 ---
 
-## Phase 10: 大檔案上傳架構重構 (隨機寫入 + Redis 進度追蹤) [待執行]
+## Phase 10: 大檔案上傳架構重構 (隨機寫入 + Redis 進度追蹤) [已完成 100%]
 
 為了徹底解決大檔案在 `finalize_upload` 階段發生的合併 I/O 延遲，將上傳機制重構為「實體 Sparse File 預分配與 Random Access Write」，並由 Redis 接管高頻進度追蹤。
 
@@ -200,27 +200,27 @@
 
 ---
 
-## Phase 14: 上線部署與網路連線架構規劃 (私有雲終極型態) [待執行]
+## Phase 14: 上線部署與網路連線架構規劃 (私有雲終極型態) [已完成 100%]
 
 針對未來上線部署，採用 **「私有 DNS + DNS-01 憑證驗證」** 的雙軌架構，實現無限制高速、專屬網域與絕對安全：
 
-- [ ] **1. Cloudflare (負責 DNS 與憑證驗證)**
+- [x] **1. Cloudflare (負責 DNS 與憑證驗證)**
   - **角色定位**：僅作為網址導航與 Let's Encrypt 綠色鎖頭的發放公證人。
   - **實作細節**：將專屬網域 (如 `files.yourdomain.com`) 以 `A 紀錄` 指向伺服器的 Tailscale 內部 IP (100.x.x.x)。
   - **⚠️ 關鍵注意**：務必關閉 CF 代理 (灰色雲朵)，避免流量被 CF 攔截與限速。CF Tunnel 在此高速架構下不適用。
 
-- [ ] **2. Tailscale (負責實體資料傳輸)**
+- [x] **2. Tailscale (負責實體資料傳輸)**
   - **角色定位**：點對點 (P2P) 高速加密連線隧道。
   - **實作細節**：完全繞過公網限速，直接吃滿客戶端與伺服器端的真實頻寬，非常適合大檔案 (數十 GB) 上下傳。
   - **安全性**：伺服器無需在路由器設定 Port Forwarding，實現 Zero Trust (零信任) 防護，阻絕公網掃描與 DDoS 攻擊。
 
-- [ ] **3. Nginx Proxy Manager (負責反向代理與流量管理)**
+- [x] **3. Nginx Proxy Manager (負責反向代理與流量管理)**
   - **角色定位**：大門守衛，負責掛載 HTTPS 憑證、反向代理轉發與頻寬控管。
   - **自動憑證**：透過 NPM 內建的 Cloudflare API (DNS-01 挑戰)，自動為私有 IP (100.x.x.x) 申請並展延合法的 TLS/SSL 憑證。
   - **流量管理**：
     - **速度限制 (Bandwidth Throttling)**：若需限制單一用戶下載速度，可於 NPM 進階設定配置 `limit_rate`。
     - **Keep-Alive 支援**：明確啟用 `upstream keepalive` (對應 Phase 5.7)，防止大檔案分塊上傳時頻繁建立連線導致被踢。
 
-- [ ] **4. FastAPI 後端 (負責應用層限流與業務)**
+- [x] **4. FastAPI 後端 (負責應用層限流與業務)**
   - **角色定位**：處理 API 請求次數限制與核心業務邏輯。
   - **實作細節**：利用 Redis 的 Rate Limiting 機制，防範前端異常的重複高頻請求 (例如狂點下載)。

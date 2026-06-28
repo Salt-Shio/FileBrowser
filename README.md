@@ -1,21 +1,61 @@
 # File Explorer
 
-一個用來做檔案上傳的個人網站，方便自己遠端操作
+這個專案主要是給我個人學習與使用的，類似一個 NAS 系統架設在小電腦上，但是我希望把它做成支援多人的檔案系統
 
-但實作的方式，我希望更貼近大專案的想法與做法
+## 前端展示
 
-## 系統架構
+<video width="100%" controls>
+  <source src="./docs/salty-file-explore-demo.mp4" type="video/mp4">
+</video>
+
+## 使用到的技術
+
+* 後端 (Python)
+    * FastAPI (非同步核心框架)
+    * SQLAlchemy (非同步 ORM)
+    * SQLite (開啟 WAL 模式的高效本地資料庫)
+    * Redis (快取、限流與單次下載憑證鎖)
+    * PyOTP & JWT (雙重驗證 2FA 與身分授權)
+* 前端 (TypeScript)
+    * Vue 3 (Composition API)
+    * Vite (極速建置工具)
+    * Pinia (狀態管理)
+    * Tailwind CSS (玻璃擬物化 Glassmorphism 設計)
+    * Axios (支援攔截器與上傳進度追蹤)
+* Infra (基礎設施)
+    * Docker & Docker Compose (容器化微服務部署)
+    * Tailscale (Zero-Trust P2P 虛擬區域網路)
+    * Nginx Proxy Manager (反向代理與 Let's Encrypt 自動憑證)
+    * Cloudflare (DNS 解析管理)
+
+## 系統核心特色 (Key Features)
+
+### 📂 虛擬檔案系統 (Virtual File System, VFS)
+* **資料庫驅動 (Metadata)**：檔案改名與搬移皆為純資料庫操作，零磁碟 I/O 延遲。
+* **併發分塊與隨機寫入**：大檔案前端切塊併發上傳，後端預分配 Sparse File 空間並透過 `seek(offset)` 隨機寫入，徹底消滅大檔案合併瓶頸。
+* **跨資料夾斷點續傳**：無縫暫停與恢復傳輸，即使切換不同資料夾也能記住進度並正確歸檔。
+* **軟刪除與背景清理 (GC)**：檔案刪除先進入隱藏狀態，由背景哨兵 (Sentinel) 定時非同步清理實體磁碟。
+
+### 🛡️ 資安與身分驗證 (Security & Auth)
+* **JWT 授權 & Argon2 加密**：採用高強度密碼學防護與無狀態授權。
+* **雙重驗證 (2FA/TOTP)**：支援 Authenticator App 掃碼綁定，防止帳號盜用。
+* **單次下載憑證 (Ticket)**：透過 Redis 派發 30 秒拋棄式下載憑證，防禦重放攻擊與伺服器過載。
+
+## 業務功能架構圖 (Functional Architecture)
+
+本圖表呈現了外部請求從進入系統到觸發底層實體寫入的「功能端點與業務流向」。
 
 ```mermaid
+%%{init: {'themeVariables': { 'fontSize': '18px'}}}%%
 graph TD
     %% 外部請求流向
-    User([個人使用者]) -- HTTPS (CF Edge) --> CF_Tunnel[Cloudflare Tunnel]
+    User([個人使用者]) -- HTTPS (Tailscale/公網) --> NPM[Nginx Proxy Manager]
     
     subgraph Docker_Boundary [Docker 部署邊界]
-        CF_Tunnel -- Secure Tunnel --> Ingress
+        NPM -- Proxy Pass --> Ingress
         
         subgraph Layer_1 [1. 流量閘道層]
-            Ingress[安全攔截器: 限流 / CF-IP 識別]
+            Ingress[Web Nginx / FastAPI 攔截器]
             Router[API 總路由器]
             Ingress --> Router
         end
@@ -50,11 +90,11 @@ graph TD
 
     subgraph Layer_3_File [4. 檔案引擎核心]
         VFS_Engine[VFS 核心引擎: 結構管理與實體同步]
-        Chunk_Mgr[Chunk_Mgr: 分片處理與合併]
+        Chunk_Mgr[Chunk_Mgr: 隨機寫入 Sparse File]
         
         %% 內部邏輯流
         VFS_Engine -. 權限驗證 .-> Chunk_Mgr
-        Chunk_Mgr -- 合併完成 --> VFS_Engine
+        Chunk_Mgr -- 結算完成 --> VFS_Engine
     end
 
     subgraph Layer_3_GC [背景維護核心]
@@ -65,7 +105,7 @@ graph TD
     subgraph Layer_4 [5. 數據持久層與快取]
         DB[(SQLite: Metadata / 使用者)]
         Disk[實體磁碟: 二進制檔案]
-        RedisCache[(Redis: 臨時憑證 / 快取)]
+        RedisCache[(Redis: 臨時憑證 / 快取 / 限流)]
     end
 
     %% 跨層對接邏輯
@@ -84,144 +124,110 @@ graph TD
     %% 背景 GC 哨兵運作關聯
     GC_Sentinel --> DB
     GC_Sentinel --> Disk
+    GC_Sentinel --> RedisCache
 
     %% 底層持久化
     Auth_Core --> DB
     Session_Mgr --> DB
     VFS_Engine --> DB
     VFS_Engine --> RedisCache
-    Chunk_Mgr -- 暫存碎片與合併 --> Disk
+    Chunk_Mgr -- 隨機寫入 --> Disk
     VFS_Engine -- 實體同步 --> Disk
     end
 ```
 
-
-## 目前進度
-
-### Phase 1: 基礎建設與安全驗證 [已完成 100%]
-
-- [x] **專案骨架與容器化**: 建立 FastAPI 目錄結構、`.env` 管理與 `docker-compose.yml`，cloudflare 留到後期。
-- [x] **資料庫基礎與 WAL 配置**: 實作 SQLAlchemy 異步連線，並強制開啟 SQLite **WAL 模式**，定義 `User` 模型。
-- [x] **密碼哈希 (Argon2 Hasher)**: 整合 `passlib[argon2]`，實作密碼雜湊與驗證，建立首位 Admin 腳本。
-- [x]  **雙重驗證鎖 (TOTP Logic)**: 使用 `pyotp` 實作 2FA 密鑰生成與 6 位數驗證碼。
-- [x] **通行證與 IP 紀錄 (JWT & Middleware)**:  實作 JWT 簽發、**CF-Connecting-IP** 識別中介層與基礎限流防護。
-- [x] **門禁櫃台 API (Auth Endpoints)**: 串連上述邏輯，完成 `/login`、`/verify-2fa` 與 `/me` 測試端點。
-
 ---
 
-### Phase 2: VFS 結構與瀏覽邏輯 (Metadata & Navigation) [已完成 100%]
-- [x] **Step 2.1: 元數據建模 (Metadata Schema)**: 建立 `Folder` 與 `File` 模型，包含 UUID, `hash_sha256` 與複合索引優化。
-- [x] **Step 2.2: 導航核心 (Navigation Core)**: 實作「UUID 查詢」邏輯與「麵包屑 (Breadcrumbs) 產生器」。
-- [x] **Step 2.3: 瀏覽端點 (Browse API)**: 實作 `/browse/ls/{folder_id}` 與 `/browse/search` 端點，支援分頁與排序。
-- [x] **Step 2.4: 系統初始化與安全 (Initial Root & Security)**: 實作啟動時自動建立使用者根目錄，並確保 UUID 存取安全性。
+## 系統程式結構圖 (System Module Structure)
 
-### Phase 3: VFS 節點邏輯管理 (Purely Virtual Mutation) [已完成 100%]
-> [!NOTE]
-> **本階段目標**：專注於純邏輯的「目錄樹節點」維護。在此架構下，目錄僅為資料庫中的虛擬節點，不與磁碟實體資料夾掛鉤。
+本圖表呈現以後端 `app.main` 為核心的「程式碼調用階層與模組依賴關係」。
 
-- [x] **Step 3.0: 基礎優化與安全強化**: 統一 Service 層參數風格，實作 2FA Token 階段鎖定與 User Schema。
-- [x] **Step 3.1: 虛擬節點建立 (Mkdir)**：實作具備同級命名衝突檢查的目錄建立。
-- [x] **Step 3.2: 節點更名與搬移 (Rename/Move)**：實作防循環引用的目錄/檔案搬移邏輯。
-- [x] **Step 3.3: 邏輯刪除與回收站 (Soft Delete)**：實作遞迴邏輯刪除與根目錄保護機制。
+```mermaid
+%%{init: {'themeVariables': { 'fontSize': '20px'}}}%%
+graph TD
+    subgraph Layer_1 [管理層 - 入口]
+        MAIN["main.py (入口點)"]
+        MIDDLEWARE["middleware/ (攔截器)"]
+        CORE["core/config.py (系統配置)"]
+        API_INIT["api/__init__.py (總路由)"]
+        GC_SENTINEL["gc/sentinel.py (垃圾回收哨兵)"]
+    end
 
-### Phase 4: 實體傳輸與檔案管理 (Physical Storage & File VFS)
-> [!IMPORTANT]
-> **設計準則：實體優先 (Physical-First)**
-> 檔案在 VFS 中的「入籍」必須發生在實體儲存成功之後，確保 DB 紀錄與磁碟狀態絕對一致。
+    subgraph Layer_2 [介面層 - Router]
+        VFS_API["api/vfs.py (檔案系統)"]
+        AUTH_API["api/auth.py (身分驗證)"]
+    end
 
-- [x] **Step 4.1: 檔案系統功能模組 (Filesystem Infrastructure)** [已完成 100%]
-    - **`app/filesystem/chunks.py`** (暫存與合併)：
-        - 職責：管理分塊暫存、流式合併與增量雜湊計算。
-        - 核心函式：`save_chunk()`, `merge_chunks()`, `cleanup_temp()`。
-    - **`app/filesystem/storage.py`** (實體存儲)：
-        - 職責：管理正式區實體檔案、刪除與路徑檢索。
-        - 核心函式：`delete_file()`, `get_full_path()`。
-- [x] **Step 4.2: 持久化模型 (Upload Session)** [已完成 100%]
-    - 建立 `UploadSession` 模型，綁定 `owner_id` 與 `target_folder_id`。
-    - 職責：追蹤分塊總數、預期雜湊值與會話有效性。
-- [x] **Step 4.3: 檔案入籍工作流 (VFS Service Flow)** [已完成 100%]
-    - **`VFSService` 核心擴充**：
-        - `init_upload()`：驗證權限並啟動會話，實作 **「同名現存檔案」與「活躍上傳會話」的雙重前置衝突防禦**。
-        - `upload_chunk()`：處理二進制流寫入。
-        - `finalize_upload()`：執行結算（合併 -> 雜湊校驗 -> 建立 File 節點）。
-    - **路由層與 API 實作**：註冊三階段 API 端點，並修復了欄位命名不一致導致的 `ResponseValidationError` 回應校驗錯誤。
-- [x] **Step 4.4: 串流下載與清理 (IO & Cleanup)** [已完成 100%]
-    - [x] **高效下載管道 (包含 ETag 整合)**：實作帶安全 ETag 快取校驗與 Range 續傳支援的 `FileResponse` 流式下載端點。
-    - [x] **上傳進度探測 API**：提供 `GET /vfs/upload/status/{upload_id}`，允許前端在斷線重連後探測伺服器已收到的分塊，跳過重複傳輸。
-    - [x] **主動取消 API**：提供 `POST /vfs/upload/cancel`，允許前端主動發起取消以即時清理會話紀錄與暫存碎片檔案。
-    - [x] **定時背景哨兵 (GC)**：於服務啟動時掛載背景協程，定時物理清除資料庫中過期（>24小時）的活躍會話，並清除對應的磁碟暫存。
+    subgraph Layer_3 [執行層 - Service & Deps]
+        DEPS["api/deps.py (依賴注入中心)"]
+        VFS_SVC["services/vfs_service.py (檔案業務)"]
+        AUTH_SVC["services/auth_service.py (身分業務)"]
+    end
 
-### Phase 5: 系統完善與管理 (Admin & Polish)
-- [x] **Step 5.1: 自助安全管理 (2FA 綁定與註冊流程 - 後端 API)** [已完成 100%]
-    * **解決問題**：重構 `/login` 機制支援免 2FA 初始登入；新增註冊端點 `/register`；實作 2FA 兩階段綁定流程（產生與驗證啟用）與停用 API，並更新測試腳本以全面覆蓋。
-    * **具體完成步驟**：
-      - [x] **1. 使用者註冊端點**：新增 `POST /api/auth/register` API，新註冊使用者之 `is_totp_enabled` 預設為 `False`，`totp_secret` 為 `None`。
-      - [x] **2. 登入邏輯重構**：重構 `POST /api/auth/login` 的驗證邏輯。若使用者 `is_totp_enabled` 為 `False`，直接簽發正式的 JWT `access_token`；若為 `True`，才簽發短效 `two_fa_token` 並回傳 `require_2fa: true`。
-      - [x] **3. 2FA 兩階段綁定端點**：
-        - [x] 新增 `POST /api/auth/2fa/generate`：產生隨機 Base32 金鑰並暫存於資料庫（此時 `is_totp_enabled` 仍保持 `False`，避免掃碼前被鎖定），回傳金鑰與 QR Code 連結。
-        - [x] 新增 `POST /api/auth/2fa/enable`：驗證使用者輸入的手機 App OTP 驗證碼，成功後更新 `is_totp_enabled` 為 `True`。
-      - [x] **4. 2FA 停用端點**：新增 `POST /api/auth/2fa/disable`，校驗當前 OTP 驗證碼後將 `is_totp_enabled` 設為 `False` 並清除安全金鑰。
-      - [x] **5. Schema 與測試腳本更新**：修改 `LoginResponse` 結構以支援直接回傳 `access_token` 與 `token_type`；更新 `test_api.py` 測試腳本，支援非強制 2FA 情況下的登入與綁定流程測試。
+    subgraph Layer_4 [基礎層 - Security, Data & Storage]
+        DB[("database.py / DB")]
+        REDIS[("core/cache.py / Redis")]
+        FILESYSTEM["filesystem/ (實體存儲策略)"]
+        MODELS["models/ (資料結構)"]
+        SCHEMAS["schemas/ (Pydantic)"]
+        JWT["security/jwt.py"]
+        HASHER["security/hasher.py"]
+        OTP["security/otp.py"]
+    end
 
-- [ ] **Step 5.2: 前端控制台與安全管理介面 (VFS & Auth UI - Vue 3 + Tailwind CSS)**：
-    * **1. 認證流 UI**：
-      - [ ] 註冊與登入頁面設計（包含 2FA 兩階段跳轉驗證）。
-      - [ ] 個人中心 2FA 產生、首次掃描 QR Code 綁定與停用安全鎖介面。
-    * **2. 虛擬檔案總管 (VFS) 互動 UI**：
-      - [ ] 目錄與檔案層級瀏覽介面（麵包屑導航、建立資料夾、重新命名、移動）。
-      - [ ] 邏輯刪除（軟刪除）至回收站以及還原/徹底刪除管理介面。
-    * **3. 傳輸管理 UI**：
-      - [ ] 斷點續傳分塊上傳管理面板與上傳進度條。
-      - [ ] 支援取消上傳並即時清理。
+    %% 調用關係
+    MAIN --> MIDDLEWARE
+    MAIN --> CORE
+    MAIN --> API_INIT
+    MAIN --> GC_SENTINEL
+    MAIN -.->|Lifespan Init| DB
+    MAIN -.->|Lifespan Init| REDIS
 
-### Phase 6: 輔助系統與處理 (功能增強)
-- [ ] **Media Processor**: 實作非同步媒體處理器，生成縮圖與提取元數據。
+    API_INIT --> VFS_API
+    API_INIT --> AUTH_API
 
-### Phase 7: 系統部分強化
+    %% 業務與依賴 (DI 注入流程)
+    VFS_API --> DEPS
+    AUTH_API --> DEPS
+    DEPS -.->|Instantiate| VFS_SVC
+    DEPS -.->|Instantiate| AUTH_SVC
 
-- [ ] **2fa replay 防禦**: 目前的 2fa 是 30 秒更新一次，問題是沒有嚴格限制不能重放，這有利爆破。
+    %% 執行層調用基礎層 (由 DEPS 組裝注入)
+    DEPS --> DB
+    DEPS --> REDIS
+    DEPS --> FILESYSTEM
 
-## 技術棧
-- **Backend**: FastAPI (Python)
-- **Frontend**: Vue 3 + Vite + Tailwind CSS
-- **Database**: SQLAlchemy 2.0 (Async) + SQLite, Redis (Cache & Token)
-- **Security**: OAuth2 (Bearer Token), Argon2 (Password), PyOTP (2FA), Jose (JWT)
-- **Container**: Docker + Docker Compose
+    VFS_SVC --> MODELS
+    VFS_SVC --> JWT
 
-## 快速啟動 (開發環境)
-```powershell
-docker-compose up --build -d
+    AUTH_SVC --> MODELS
+    AUTH_SVC --> JWT
+    AUTH_SVC --> HASHER
+    AUTH_SVC --> OTP
+
+    %% 背景 GC 哨兵調用
+    GC_SENTINEL --> DB
+    GC_SENTINEL --> FILESYSTEM
+
+    %% Schema 調用
+    VFS_API -.-> SCHEMAS
+    AUTH_API -.-> SCHEMAS
+
+    %% 樣式美化
+    style MAIN fill:#FF9800,stroke:#333,stroke-width:4px,color:#000
+    style GC_SENTINEL fill:#FF9800,stroke:#333,stroke-width:2px,color:#000
+    style API_INIT fill:#2196F3,stroke:#333,stroke-width:2px,color:#fff
+    style DEPS fill:#E1BEE7,stroke:#333,stroke-width:2px,color:#000
+    style AUTH_SVC fill:#C8E6C9,stroke:#333,stroke-width:2px,color:#000
+    style VFS_SVC fill:#C8E6C9,stroke:#333,stroke-width:2px,color:#000
+    style DB fill:#ECEFF1,stroke:#333,color:#000
+    style FILESYSTEM fill:#FFF9C4,stroke:#333,color:#000
 ```
-服務啟動後可訪問：
-- **API 文件**: `http://localhost:8000/docs`
-- **前端介面**: `http://localhost:5173` (開發中)
 
----
+### 核心層級說明
 
-## 架構設計思考 (Architectural Thinking)
-
-### 1. 異常處理的層級分工 (Exception Handling)
-**問題**：`HTTPException` 應該在 Service Layer 還是 API Layer 處理？
-**原則**：**「低層拋出訊息，高層決定行為」**。
-- **Service Layer (底層/廚師)**：負責偵測「業務邏輯錯誤」（如：找不到節點、命名衝突）。它應該拋出 **純粹的邏輯異常** (如 `NodeNotFoundError`)，而不是 HTTP 異常。
-- **API Layer (高層/服務生)**：負責將邏輯異常 **「翻譯」** 成適合當前通訊協定的格式（如 `HTTP 404`）。
-- **優點**：確保 Service Layer 的通用性，使其能被 CLI、腳本或背景任務複用，而不依賴於特定的 Web 框架 (FastAPI)。
-
-### 2. 服務依賴注入 (Dependency Injection & Strategy Pattern)
-- **Storage 抽象化**：檔案存取底層實作了 `BaseStorage` 介面，並以 `LocalDiskStorage` 具現化，不僅徹底解耦了 VFS 業務邏輯與實體磁碟操作，未來擴充 S3 支援也只需抽換注入即可。
-- **Service DI 化**：全面廢棄 `@staticmethod`，採用實例化 Service。透過 FastAPI 的 `Depends` 統一於 `deps.py` 組裝 `db`、`redis_client` 與 `storage` 後再注入 Service，消滅了全域變數引發的狀態污染與依賴地獄。
-
-### 3. Fail-Fast 原則
-- **偵測 (Detection)**：錯誤偵測應離「成因」與「實作地點」越近越好，以便於快速定位問題。
-- **處理 (Handling)**：錯誤處置應拉遠到高層決定，以保持系統整體的彈性與策略一致性。
-
-### 3. 垃圾回收 (GC) 的解耦與非同步執行緒設計
-**問題 1：AnyIO 執行緒池混用協程 Bug**
-- **狀況**：在舊版垃圾回收設計中，錯誤地將一個 `async def` 協程函式傳入了 `anyio.to_thread.run_sync()`。
-- **成因**：`run_sync` 本身是為了將「同步阻塞操作 (如本機磁碟 I/O)」移至背景執行緒池執行，以防止卡死 Event Loop。當傳入 `async def` 時，背景執行緒在沒有 Event Loop 調度的情況下直接呼叫它，只會瞬間得到一個 `<coroutine>` 物件，而根本不會執行其內部的實體硬碟檢查。該物件在 Python 的 Boolean 判定中永遠為 `True`，導致過期會話防護機制徹底失效。
-- **解法**：將原生同步的磁碟操作（例如內建的 `os.path.exists`）作為參數直接傳入 `run_sync` 第一個位置，使其在背景執行緒中安全執行；而我們自己寫的非同步業務（`async def`）則直接在主執行緒中用 `await` 呼叫。
-
-**問題 2：同級服務互相依賴 (Sibling Coupling) 與循環導入**
-- **狀況**：若將垃圾回收業務獨立為 `GCService` 放在 `services/` 資料夾中，因為它需要調用 `VFSService` 來取消上傳會話，這使得兩個同層級的 Service 產生了緊密耦合，在 Python 中極易引發 **循環導入 (Circular Import)**。
-- **解法**：將垃圾回收定位為與 API 同等地位的 **「入口驅動層 (Entry Layer)」**，並在 `app/gc/` 資料夾下建立獨立的 `sentinel.py` 模組。由 `gc/sentinel.py` 向下單向導入資料庫與 `VFSService` 並呼叫 `cancel_upload()`。如此實現了**嚴格的單向依賴 (Unidirectional Dependency)**，既重用了核心上傳取消邏輯，又讓 `vfs_service.py` 保持 100% 的純粹與職責單一。
-
+1.  **管理層 (Top)**：`main.py` 負責將所有模組組裝起來。在應用啟動時，它會拉起背景垃圾回收哨兵 (`app/gc/sentinel.py`) 任務並初始化資料庫與 Redis 連線池 (`lifespan`)；並在應用關閉時，優雅地釋放連線與取消哨兵，避免資源洩漏。
+2.  **路由層 (Router)**：`api/` 負責分流外部 HTTP 請求，但不處理複雜邏輯。
+3.  **依賴層 (Deps)**：`deps.py` 像是一個橋樑，把底層的「資料庫」、「Redis 快取」與「安全工具」提供給上層。
+4.  **執行層 (Logic)**：`services/` 才是真正動手處理資料的地方。
+5.  **基礎層 (Base)**：`models`, `database`, `cache.py`, `security` 是最純粹的工具，不依賴任何人。
