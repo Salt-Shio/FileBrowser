@@ -304,7 +304,7 @@ const getStatusLabel = (status: string) => {
 <template>
   <div class="min-h-full w-full relative flex flex-col items-center pt-8">
     <!-- 頁面最大寬度容器 -->
-    <div class="w-full max-w-[1440px] px-10 flex flex-col h-full gap-8">
+    <div class="w-full max-w-[1500px] px-8 flex flex-col h-full gap-8">
       
       <!-- 全局錯誤公告 -->
       <div v-if="vfsStore.error" class="w-full bg-red-950/80 border border-red-500 rounded-lg p-4 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)] backdrop-blur-md relative shrink-0">
@@ -478,6 +478,76 @@ const getStatusLabel = (status: string) => {
           </div>
         </div>
 
+        <!-- 第三欄：傳輸管理 -->
+        <div class="bg-mono-950/50 md:w-[320px] shrink-0 flex flex-col border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
+          <div class="p-4 border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm flex items-center justify-between">
+            <h2 class="font-mono text-mono-400 text-sm tracking-widest uppercase">Transfers</h2>
+            <button 
+              @click="vfsStore.clearFinishedTasksAction()"
+              class="text-[9px] font-mono bg-mono-800 text-mono-200 hover:bg-mono-700 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer border border-mono-600"
+            >
+              CLEAR
+            </button>
+          </div>
+          
+          <div class="flex flex-col gap-2 p-3 overflow-y-auto h-full">
+            <div v-if="vfsStore.uploadTasks.length === 0" class="text-center text-mono-600 italic text-xs font-mono mt-10">
+              // no active transfers
+            </div>
+            
+            <div 
+              v-for="task in vfsStore.uploadTasks" 
+              :key="task.id"
+              class="bg-mono-900 border border-mono-700 rounded-lg p-3 flex flex-col gap-1.5 relative shadow-sm"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium truncate max-w-[160px]" :title="task.filename">
+                  {{ task.filename }}
+                </span>
+                <span class="text-[9px] font-mono px-1 py-0.5 rounded bg-mono-800 text-mono-300 border border-mono-700">
+                  {{ getStatusLabel(task.status) }}
+                </span>
+              </div>
+
+              <!-- 進度條 -->
+              <div class="w-full bg-mono-950 border border-mono-700 rounded-full h-2 overflow-hidden relative">
+                <div 
+                  class="bg-mono-50 h-full transition-all duration-300"
+                  :style="{ width: `${task.progress}%` }"
+                ></div>
+                <span class="absolute inset-0 flex items-center justify-center text-[8px] font-mono font-bold mix-blend-difference text-white">
+                  {{ task.progress }}%
+                </span>
+              </div>
+
+              <div class="flex items-center justify-between text-[10px] mt-1 font-mono">
+                <span class="text-mono-500">
+                  {{ formatBytes(task.totalSize) }}
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <template v-if="task.status === 'uploading' || task.status === 'checking'">
+                    <button @click="pauseUpload(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">PAUSE</button>
+                  </template>
+                  <template v-else-if="task.status === 'paused'">
+                    <button @click="resumeUpload(task.id)" class="text-mono-50 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RESUME</button>
+                    <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
+                  </template>
+                  <template v-else-if="task.status === 'waiting_for_file'">
+                    <button @click="triggerResumeFileInput(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RETRY</button>
+                    <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
+                  </template>
+                  <template v-else-if="task.status === 'failed'">
+                    <button @click="resumeUpload(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RETRY</button>
+                    <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
+                  </template>
+                  <span v-else-if="task.status === 'finalizing'" class="text-mono-300 animate-pulse">MERGING...</span>
+                  <span v-else-if="task.status === 'success'" class="text-mono-50">DONE</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -558,79 +628,7 @@ const getStatusLabel = (status: string) => {
       </div>
     </BaseModal>
 
-    <!-- 5. 懸浮上傳進度面板 -->
-    <div 
-      v-if="vfsStore.uploadTasks.length > 0"
-      class="fixed bottom-6 right-6 z-50 w-[360px] bg-mono-950 border border-mono-700 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col text-mono-50 backdrop-blur-xl"
-    >
-      <div class="bg-mono-900/80 text-mono-50 px-4 py-3 flex items-center justify-between border-b border-mono-700">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-bold font-sans">傳輸管理</span>
-          <span class="text-[10px] font-mono bg-mono-800 border border-mono-600 px-1.5 py-0.5 rounded text-mono-300">
-            {{ activeUploadCount }} / {{ vfsStore.uploadTasks.length }}
-          </span>
-        </div>
-        <button 
-          @click="vfsStore.clearFinishedTasksAction()"
-          class="text-[10px] font-mono bg-mono-800 text-mono-200 hover:bg-mono-700 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer border border-mono-600"
-        >
-          CLEAR
-        </button>
-      </div>
-
-      <div class="max-h-[300px] overflow-y-auto p-3 flex flex-col gap-2 bg-mono-950/50">
-        <div 
-          v-for="task in vfsStore.uploadTasks" 
-          :key="task.id"
-          class="bg-mono-900 border border-mono-700 rounded-lg p-3 flex flex-col gap-2 relative shadow-sm"
-        >
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-medium truncate max-w-[180px]" :title="task.filename">
-              {{ task.filename }}
-            </span>
-            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-mono-800 text-mono-300 border border-mono-700">
-              {{ getStatusLabel(task.status) }}
-            </span>
-          </div>
-
-          <!-- 進度條 (白/灰科技感) -->
-          <div class="w-full bg-mono-950 border border-mono-700 rounded-full h-3 overflow-hidden relative">
-            <div 
-              class="bg-mono-50 h-full transition-all duration-300"
-              :style="{ width: `${task.progress}%` }"
-            ></div>
-            <span class="absolute inset-0 flex items-center justify-center text-[8px] font-mono font-bold mix-blend-difference text-white">
-              {{ task.progress }}%
-            </span>
-          </div>
-
-          <div class="flex items-center justify-between text-[10px] mt-1 font-mono">
-            <span class="text-mono-500">
-              {{ formatBytes(task.totalSize) }}
-            </span>
-            <div class="flex items-center gap-1.5">
-              <template v-if="task.status === 'uploading' || task.status === 'checking'">
-                <button @click="pauseUpload(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">PAUSE</button>
-              </template>
-              <template v-else-if="task.status === 'paused'">
-                <button @click="resumeUpload(task.id)" class="text-mono-50 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RESUME</button>
-                <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
-              </template>
-              <template v-else-if="task.status === 'waiting_for_file'">
-                <button @click="triggerResumeFileInput(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RETRY</button>
-                <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
-              </template>
-              <template v-else-if="task.status === 'failed'">
-                <button @click="resumeUpload(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RETRY</button>
-                <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
-              </template>
-              <span v-else-if="task.status === 'finalizing'" class="text-mono-300 animate-pulse">MERGING...</span>
-              <span v-else-if="task.status === 'success'" class="text-mono-50">DONE</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- 上傳進度已整合為右側欄 -->
   </div>
 </template>
 
