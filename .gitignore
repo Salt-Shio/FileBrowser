@@ -49,3 +49,8 @@ build/
 # --- OS ---
 Thumbs.db
 db.sqlite3
+
+# --- Docker Volumes ---
+npm-data/
+npm-letsencrypt/
+tailscale-data/
