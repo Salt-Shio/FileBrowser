@@ -5,7 +5,11 @@
 2. 處理 2FA 驗證流程
 3. 協調 Security 工具與資料庫模型
 """
-from sqlalchemy.ext.asyncio import AsyncSession
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy.future import select
 
 from app.models import User

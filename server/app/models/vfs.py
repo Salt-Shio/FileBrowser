@@ -5,6 +5,7 @@
 2. 管理虛擬路徑的層級關係與檔案元數據
 3. 建立虛擬節點與實體磁碟路徑的映射
 """
+from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, DateTime, ForeignKey, Index

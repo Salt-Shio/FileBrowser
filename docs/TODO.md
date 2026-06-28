@@ -64,18 +64,9 @@
 - [x] 9. [優化項目] 解決大檔案上傳速度慢的效能瓶頸，降低協定與資料庫等待開銷：
   - **動態分塊大小**：小檔案（<100MB）預設 `2MB`，中檔案（100MB~1GB）使用 `5MB`，大檔案（>=1GB）改用 `10MB` 或 `20MB` 分塊，直接降低 80% 的 HTTP 請求與後端 Session 查詢次數。
   - **併發分塊上傳**：取消單一 for 迴圈序列阻塞式 `await`，實作前端「限制併發數的 Promise 執行池」（例如 Concurrency = 3），同時上傳 3 個分塊，吃滿網路與硬碟寫入頻寬。
-- [ ] 10. [環境優化項目] 改善 Docker on Windows (WSL2) 掛載磁碟目錄造成的 I/O 延遲（大檔案合併瓶頸）。評估之三種改善方案與優缺點：
-  - **方案 A：改用 Docker 具名卷 (Named Volume) 存放上傳數據 (如 `file-explorer-data:/app/data`)**
-    - *優點*：I/O 速度大升 5~10 倍（原生 EXT4 讀寫），3GB 大檔案合併從近一分鐘降至數秒。
-    - *缺點*：Windows 本機目錄中無法直觀看到 `./data` 下的實體檔案，需在 WSL2 終端機或 WSL 虛擬磁碟路徑中走訪。
-  - **方案 B：將整個專案專案目錄移入 WSL2 原生 Linux 家目錄開發**
-    - *優點*：不跨 OS 邊界，維持原本的 Volume 掛載，同時享有本機硬碟的原生讀寫效能。
-    - *缺點*：開發習慣需要適應，須使用 VS Code `Remote - WSL` 插件遠端連入虛擬機開發。
-  - **方案 C：從程式面改用「隨機寫入 (On-the-fly Random Access Write)」（同 TODO 6）**
-    - *優點*：物理寫入量減半，最後 Finalize 幾乎秒開，且 Windows 目錄中仍可看見實體檔案。
-    - *缺點*：後端上傳 Session 狀態探測（斷點續傳）必須重構，工程改動規模較大。
-- [ ] 11. [架構演進/長期優化] 將分塊上傳機制改為「邊傳邊寫 / 隨機寫入 (On-the-fly Random Access Write)」，以消除結算合併（Finalize）階段的大檔案物理合併 I/O 延遲，優化伺服器 SSD 寫入壽命。
-  - 必須先衡量優缺點才決定是否使用
+- [x] 10. [環境優化項目] (已作廢，未來直接部署於 Linux) 改善 Docker on Windows (WSL2) 掛載磁碟目錄造成的 I/O 延遲（大檔案合併瓶頸）。
+- [x] 11. [架構演進/長期優化] 將分塊上傳機制改為「邊傳邊寫 / 隨機寫入 (On-the-fly Random Access Write)」。
+  - **(已於 Phase 10 完整實作)**：已改用 Sparse File 預分配與 `seek(offset)` 隨機寫入，徹底消除合併階段的 I/O 延遲。
 
 ---
 
@@ -131,7 +122,7 @@
   * **背景原因**：`hasher.py`, `jwt.py`, `otp.py` 目前為純函數式設計，內部直接依賴 `settings.SECRET_KEY`。
   * **評估結果**：由於加密演算法本身是**無狀態 (Stateless)** 且極度單純，硬包裝成類別 (如 `JWTManager`) 雖然工整，但增加使用時的繁瑣度。建議此部分**維持現狀**即可，除非未來專案發展出多租戶或需在測試中頻繁動態抽換金鑰的需求。
 
-- [ ] 5. **🟡 [中高優先] Phase 9 (Part 5) 引入 `TYPE_CHECKING` 優化全域模組引用**：
+- [x] 5. **🟡 [中高優先] Phase 9 (Part 5) 引入 `TYPE_CHECKING` 優化全域模組引用**：
   * **目標**：全面掃描所有 `.py` 檔案，將僅用於 Type Hint 的頂層 `import` 移入 `if TYPE_CHECKING:` 區塊內，並搭配 `from __future__ import annotations`。
   * **背景原因**：徹底消滅專案變大後容易引發的「循環依賴 (Circular Import)」風險，同時減少 FastAPI 啟動時的 Runtime Overhead。
 

@@ -5,6 +5,7 @@
 2. 設定欄位約束 (如 Unique, Index)
 3. 作為 SQLAlchemy ORM 操作的物件實體
 """
+from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, DateTime

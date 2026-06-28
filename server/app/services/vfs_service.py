@@ -5,21 +5,25 @@
 2. 實作導航核心 (UUID 查詢與麵包屑生成)
 3. 確保所有操作皆符合擁有者權限驗證 (Security)
 """
+from __future__ import annotations
+
 import json
 import uuid
 import asyncio
-from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from mimetypes import guess_type
-from redis.asyncio import Redis
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from typing import Optional, List, Dict, Any
+    from redis.asyncio import Redis
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.filesystem.base import BaseStorage
+
 from sqlalchemy.future import select
 from sqlalchemy import update
-
 from app.models import Folder, File, UploadSession
 from app.schemas.vfs import Breadcrumb, BrowseResponse
-from app.filesystem.base import BaseStorage
 from app.core.config import settings
 from app.core.exceptions import (
     NodeNotFoundError,
