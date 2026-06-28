@@ -1,9 +1,9 @@
+# 這裡選擇保留 .env 因為前端編譯的時候會使用
+
 node_modules
 dist
 .git
 .vscode
-.env
-.env.*
 dev
 docs
 server
