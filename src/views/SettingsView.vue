@@ -1,59 +1,78 @@
 <template>
-  <div class="bg-[#707070] min-h-screen relative w-full overflow-x-hidden">
+  <div class="min-h-full relative w-full overflow-x-hidden pt-8">
     <!-- Main Content -->
-    <div class="flex flex-col items-center justify-center mt-12 mb-20 w-full px-4">
-      <div class="flex flex-col gap-10 w-full max-w-4xl items-center">
+    <div class="flex flex-col items-center justify-start mt-12 mb-20 w-full px-4">
+      <div class="flex flex-col gap-10 w-full max-w-4xl items-center bg-mono-950/50 p-12 rounded-xl border border-mono-700 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+        
+        <h2 class="text-2xl font-mono text-mono-50 font-bold w-full border-b border-mono-800 pb-4 mb-4 [text-shadow:0_0_8px_rgba(255,255,255,0.2)]">System / Settings</h2>
+
         <!-- Settings Form -->
-        <div class="flex flex-col md:flex-row w-full gap-4 md:gap-[18px] justify-center">
-          <!-- Labels -->
-          <div class="flex flex-col gap-4 md:w-[195px] shrink-0">
-            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
-              <p class="font-medium text-[#474747] text-2xl text-center">使用者名稱</p>
-            </div>
-            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
-              <p class="font-medium text-[#474747] text-2xl text-center">目前密碼</p>
-            </div>
-            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
-              <p class="font-medium text-[#474747] text-2xl text-center">更改密碼</p>
-            </div>
-            <div class="bg-[#adadad] border-[5px] border-black flex items-center justify-center p-3 rounded-[15px] h-[62px]">
-              <p class="font-medium text-[#474747] text-2xl text-center">確認密碼</p>
-            </div>
-          </div>
+        <div class="flex flex-col w-full gap-6">
           
-          <!-- Inputs -->
-          <div class="flex flex-col gap-4 md:w-[541px] flex-grow">
-            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
-              <input type="text" :value="authStore.user?.username" disabled class="w-full h-full outline-none font-medium text-xl text-[#adadad] bg-transparent" placeholder="請輸入新使用者名稱" />
+          <!-- Username (Readonly) -->
+          <div class="flex flex-col md:flex-row gap-4 items-start md:items-center w-full">
+            <div class="md:w-[200px] shrink-0 font-mono text-sm text-mono-300 flex items-center">
+              <span class="mr-2 text-mono-500">&gt;</span> 使用者名稱
             </div>
-            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
-              <input type="password" v-model="oldPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請輸入目前密碼" />
-            </div>
-            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
-              <input type="password" v-model="newPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請輸入新密碼" />
-            </div>
-            <div class="bg-white border-[5px] border-[#504c4c] flex items-center px-4 rounded-[15px] h-[62px]">
-              <input type="password" v-model="confirmPassword" class="w-full h-full outline-none font-medium text-xl text-black bg-transparent" placeholder="請確認新密碼" />
+            <div class="flex-grow w-full bg-mono-900 border border-mono-700 rounded-lg h-[45px] px-4 flex items-center shadow-inner">
+              <input type="text" :value="authStore.user?.username" disabled class="w-full bg-transparent outline-none font-mono text-sm text-mono-500" />
             </div>
           </div>
+
+          <!-- Old Password -->
+          <div class="flex flex-col md:flex-row gap-4 items-start md:items-center w-full">
+            <div class="md:w-[200px] shrink-0 font-mono text-sm text-mono-300 flex items-center">
+              <span class="mr-2 text-mono-500">&gt;</span> 目前密碼
+            </div>
+            <div class="flex-grow w-full bg-mono-950 border border-mono-700 rounded-lg h-[45px] px-4 flex items-center shadow-inner focus-within:border-mono-500 focus-within:shadow-[0_0_8px_rgba(255,255,255,0.1)] transition-all">
+              <input type="password" v-model="oldPassword" class="w-full bg-transparent outline-none font-mono text-sm text-mono-50 placeholder-mono-600" placeholder="請輸入目前密碼" />
+            </div>
+          </div>
+
+          <!-- New Password -->
+          <div class="flex flex-col md:flex-row gap-4 items-start md:items-center w-full">
+            <div class="md:w-[200px] shrink-0 font-mono text-sm text-mono-300 flex items-center">
+              <span class="mr-2 text-mono-500">&gt;</span> 更改密碼
+            </div>
+            <div class="flex-grow w-full bg-mono-950 border border-mono-700 rounded-lg h-[45px] px-4 flex items-center shadow-inner focus-within:border-mono-500 focus-within:shadow-[0_0_8px_rgba(255,255,255,0.1)] transition-all">
+              <input type="password" v-model="newPassword" class="w-full bg-transparent outline-none font-mono text-sm text-mono-50 placeholder-mono-600" placeholder="請輸入新密碼" />
+            </div>
+          </div>
+
+          <!-- Confirm Password -->
+          <div class="flex flex-col md:flex-row gap-4 items-start md:items-center w-full">
+            <div class="md:w-[200px] shrink-0 font-mono text-sm text-mono-300 flex items-center">
+              <span class="mr-2 text-mono-500">&gt;</span> 確認密碼
+            </div>
+            <div class="flex-grow w-full bg-mono-950 border border-mono-700 rounded-lg h-[45px] px-4 flex items-center shadow-inner focus-within:border-mono-500 focus-within:shadow-[0_0_8px_rgba(255,255,255,0.1)] transition-all">
+              <input type="password" v-model="confirmPassword" class="w-full bg-transparent outline-none font-mono text-sm text-mono-50 placeholder-mono-600" placeholder="請確認新密碼" />
+            </div>
+          </div>
+
         </div>
 
         <!-- Confirm Button -->
-        <div class="w-full flex justify-center mt-4">
-          <button @click="handleSaveConfig" class="bg-black hover:bg-gray-800 transition-colors flex items-center justify-center p-3 rounded-[20px] w-full max-w-sm h-[62px]">
-            <p class="font-medium text-3xl text-white text-center">確認</p>
+        <div class="w-full flex justify-end mt-4 pt-6 border-t border-mono-800">
+          <button @click="handleSaveConfig" class="bg-mono-50 hover:bg-white text-mono-900 transition-colors flex items-center justify-center px-8 py-2.5 rounded-md font-bold text-sm shadow-[0_0_15px_rgba(255,255,255,0.2)] active:scale-95">
+            確認修改
           </button>
         </div>
 
         <!-- 2FA Button -->
-        <div class="mt-8 flex flex-col items-center gap-4">
-           <button v-if="!is2FAEnabled" @click="open2FAModal" :disabled="generating2FA" class="bg-[#a8a8a8] hover:bg-gray-400 transition-colors flex items-center justify-center px-8 py-4 rounded-[20px]">
-              <p class="font-medium text-3xl text-white text-center">{{ generating2FA ? '產生中...' : '啟用 2FA' }}</p>
-           </button>
-           <button v-else @click="handleDisable2FA" class="bg-red-800 hover:bg-red-700 transition-colors flex items-center justify-center px-8 py-4 rounded-[20px]">
-              <p class="font-medium text-3xl text-white text-center">停用 2FA</p>
-           </button>
-           <p v-if="errorMsg" class="text-red-300 font-bold">{{ errorMsg }}</p>
+        <div class="mt-4 flex flex-col items-center gap-4 w-full border-t border-mono-800 pt-8">
+           <div class="w-full flex flex-col md:flex-row justify-between items-center bg-mono-900/50 p-6 rounded-lg border border-mono-700 gap-4">
+             <div class="flex flex-col gap-1 w-full text-center md:text-left">
+               <span class="font-mono text-mono-50 font-bold">Two-Factor Authentication (2FA)</span>
+               <span class="font-mono text-mono-400 text-xs">增強帳戶安全性，登入時需輸入動態驗證碼。</span>
+             </div>
+             <button v-if="!is2FAEnabled" @click="open2FAModal" :disabled="generating2FA" class="shrink-0 bg-mono-800 hover:bg-mono-700 text-mono-50 transition-colors flex items-center justify-center px-6 py-2 rounded-md font-bold text-sm border border-mono-600 shadow-sm active:scale-95 disabled:opacity-50">
+                {{ generating2FA ? 'GENERATING...' : 'ENABLE 2FA' }}
+             </button>
+             <button v-else @click="handleDisable2FA" class="shrink-0 bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-900/50 transition-colors flex items-center justify-center px-6 py-2 rounded-md font-bold text-sm shadow-sm active:scale-95">
+                DISABLE 2FA
+             </button>
+           </div>
+           <p v-if="errorMsg" class="text-red-400 font-mono text-sm bg-red-900/20 px-4 py-2 rounded border border-red-900/30 w-full text-center">{{ errorMsg }}</p>
         </div>
       </div>
     </div>

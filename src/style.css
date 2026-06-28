@@ -10,7 +10,7 @@
   --color-mono-600: #525252;
   --color-mono-700: #404040;
   --color-mono-800: #262626;
-  --color-mono-900: #121212;
+  --color-mono-900: #272727;
   --color-mono-950: #000000;
 
   --color-background: var(--color-mono-500);
@@ -18,8 +18,11 @@
   --color-border: var(--color-mono-800);
   --color-muted: var(--color-mono-200);
 
-  --radius-button: 4px;
-  --radius-card: 25px;
+  --font-sans: "Inter", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --radius-button: 0px; /* Tech feel: sharp edges */
+  --radius-card: 0px;
 }
 
 :root {

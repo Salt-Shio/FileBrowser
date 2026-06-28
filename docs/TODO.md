@@ -10,10 +10,10 @@
 
 ---
 
-## Phase 5.2: 全域導航與頁面麵包屑優化 [待執行]
-- [ ] 1. 調整 [App.vue](file:///c:/Users/salt/Desktop/Project/FileBrowser/src/App.vue) 中的 Navbar 選單字體比例（對齊 Figma 的大字體風格，標題 `55px`，選單 `45px`）。
-- [ ] 2. 在全頁頂部加入「`主頁 --> [目前頁面]`」的白色底線麵包屑路徑顯示區。
-- [ ] 3. 全域字體優化：完整引入並套用 Figma 中指定的 'Inter' 字體系列（對齊字重 font-weight 與抗鋸齒渲染）。
+## Phase 5.2: 全域導航與頁面麵包屑優化 (結合無色科技感) [已完成 100%]
+- [x] 1. 調整 [App.vue](file:///d:/Project/file-explorer/src/App.vue) 中的 Navbar 選單字體比例（對齊 Figma 的大字體風格，標題 `55px`，選單 `45px`）。
+- [x] 2. 在全頁頂部加入「`主頁 --> [目前頁面]`」的白色底線麵包屑路徑顯示區（具備科幻網格與等寬字體）。
+- [x] 3. 全域字體優化：完整引入並套用 Figma 中指定的 'Inter' 與 'JetBrains Mono' 等寬字體系列，並加上抗鋸齒渲染。
 
 ---
 

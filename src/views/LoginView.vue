@@ -88,7 +88,7 @@ const handleBackToPassword = () => {
           <h2 class="text-3xl font-medium text-white">雙重驗證 (2FA)</h2>
         </template>
         
-        <div class="flex flex-col gap-6 w-full text-black">
+        <div class="flex flex-col gap-6 w-full text-mono-50">
           <!-- 錯誤訊息提示 -->
           <div v-if="errorMessage" class="bg-red-500/20 border border-red-500 text-red-100 p-3 rounded-lg text-sm text-center">
             {{ errorMessage }}
@@ -122,7 +122,7 @@ const handleBackToPassword = () => {
             <button 
               @click="handleBackToPassword" 
               :disabled="isLoading"
-              class="text-mono-600 hover:text-black font-semibold transition-colors text-center text-sm py-2 disabled:opacity-50"
+              class="text-mono-400 hover:text-white font-semibold transition-colors text-center text-sm py-2 disabled:opacity-50"
             >
               返回輸入密碼
             </button>
@@ -170,7 +170,7 @@ const handleBackToPassword = () => {
             
             <router-link 
               to="/register" 
-              class="text-mono-600 hover:text-black font-semibold transition-colors text-center block text-sm mt-6"
+              class="text-mono-400 hover:text-white font-semibold transition-colors text-center block text-sm mt-6"
             >
               尚未註冊？建立新帳號
             </router-link>

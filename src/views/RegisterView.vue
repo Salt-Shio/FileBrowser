@@ -67,7 +67,7 @@ const handleLegalAccept = async () => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <p class="text-xl text-black text-center font-medium">您的帳號已成功建立！</p>
+        <p class="text-xl text-mono-50 text-center font-medium">您的帳號已成功建立！</p>
         <BaseButton @click="router.push('/login')" class="w-full">
           前往登入
         </BaseButton>

@@ -1,53 +1,54 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div class="bg-[#7b7b7b] flex flex-col gap-2.5 items-center pb-2.5 relative rounded-[25px] w-full max-w-md">
-      <!-- Header -->
-      <div class="bg-[#3b3b3b] flex h-[72px] items-center justify-center py-2.5 relative rounded-t-[25px] w-full shrink-0">
-        <h2 class="font-medium text-[30px] text-white text-center">請掃描 QRcode 綁定</h2>
-        <button @click="close" class="absolute right-4 top-4 text-white text-3xl font-bold">&times;</button>
-      </div>
-      
-      <!-- Content -->
-      <div class="flex flex-col gap-[15px] items-center p-4 w-full shrink-0">
-        <div class="bg-white p-2 border-4 border-black rounded-lg shrink-0">
-           <qrcode-vue :value="provisioningUri" :size="250" level="M" v-if="provisioningUri" />
+  <BaseModal v-if="isOpen" title="Two-Factor Authentication" @close="close">
+    <div class="flex flex-col items-center w-full">
+      <div class="flex flex-col gap-6 items-center w-full">
+        <p class="text-mono-300 font-mono text-sm text-center">
+          請使用 Google Authenticator 等 App 掃描以下 QR Code 綁定
+        </p>
+
+        <!-- QR Code 區塊 -->
+        <div class="bg-white p-3 rounded-xl shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+           <qrcode-vue :value="provisioningUri" :size="200" level="M" v-if="provisioningUri" />
         </div>
         
-        <div class="bg-[#383838] flex items-center justify-center p-2.5 rounded-[10px] w-full shrink-0">
-          <p class="font-medium text-lg text-white text-center break-all">
-            金鑰: {{ secret }}
+        <!-- 金鑰顯示區塊 -->
+        <div class="bg-mono-950 border border-mono-700 p-3 rounded-lg w-full text-center shadow-inner">
+          <p class="font-mono text-sm text-mono-400 break-all select-all cursor-text">
+            Key: <span class="text-mono-50 font-bold">{{ secret }}</span>
           </p>
         </div>
         
-        <div class="flex flex-col gap-4 py-2.5 w-full shrink-0">
-          <div class="bg-[#a8a8a8] border-4 border-black flex items-center justify-center p-2 rounded-[20px] w-full">
-            <input 
-              v-model="otpCode" 
-              type="text" 
-              placeholder="請輸入 OTP"
-              class="bg-transparent text-white placeholder-gray-200 outline-none w-full text-2xl text-center"
-              @keyup.enter="handleEnable"
-            />
+        <!-- 驗證碼輸入區 -->
+        <div class="w-full mt-2 flex flex-col gap-4 border-t border-mono-800 pt-6">
+          <BaseInput 
+            v-model="otpCode" 
+            label="OTP 驗證碼"
+            placeholder="請輸入 6 位數驗證碼"
+            @keyup.enter="handleEnable"
+          />
+          <div class="flex gap-3">
+            <BaseButton variant="ghost" class="flex-1 text-sm py-2.5 border border-mono-700 hover:bg-mono-800 text-mono-200" @click="close">
+              取消
+            </BaseButton>
+            <BaseButton class="flex-1 text-sm py-2.5 bg-mono-50 text-black hover:bg-mono-200 shadow-[0_0_10px_rgba(255,255,255,0.2)]" @click="handleEnable" :disabled="!otpCode || loading">
+              {{ loading ? 'VERIFYING...' : 'CONFIRM' }}
+            </BaseButton>
           </div>
-          <button 
-            @click="handleEnable"
-            :disabled="!otpCode || loading"
-            class="bg-black text-white font-bold py-3 rounded-[20px] text-2xl hover:bg-gray-800 transition-colors disabled:opacity-50"
-          >
-            {{ loading ? '驗證中...' : '確認綁定' }}
-          </button>
         </div>
         
-        <p v-if="error" class="text-red-300 font-bold text-center">{{ error }}</p>
+        <p v-if="error" class="text-red-400 font-mono text-sm bg-red-900/20 px-4 py-2 rounded border border-red-900/30 w-full text-center mt-2">{{ error }}</p>
       </div>
     </div>
-  </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import QrcodeVue from 'qrcode.vue';
 import { useAuthStore } from '@/stores/auth';
+import BaseModal from '@/components/ui/BaseModal.vue';
+import BaseInput from '@/components/ui/BaseInput.vue';
+import BaseButton from '@/components/ui/BaseButton.vue';
 
 const props = defineProps<{
   isOpen: boolean;

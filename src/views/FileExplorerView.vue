@@ -302,26 +302,32 @@ const getStatusLabel = (status: string) => {
 </script>
 
 <template>
-  <div class="bg-[#707070] min-h-screen w-full relative flex flex-col items-center">
-    <!-- 頁面最大寬度容器 (對齊 Figma 1440px 設計) -->
-    <div class="w-full max-w-[1440px] px-10 flex flex-col">
+  <div class="min-h-full w-full relative flex flex-col items-center pt-8">
+    <!-- 頁面最大寬度容器 -->
+    <div class="w-full max-w-[1440px] px-10 flex flex-col h-full gap-8">
       
-      <!-- 頂部頁面麵包屑 (基於 Figma Node 17:208) -->
-      <div class="py-6 flex items-center justify-start border-b border-mono-800/10">
-        <p class="font-['Inter'] font-bold text-3xl text-white underline decoration-solid decoration-auto underline-offset-8">
-          主頁 --&gt; 檔案系統
-        </p>
+      <!-- 全局錯誤公告 -->
+      <div v-if="vfsStore.error" class="w-full bg-red-950/80 border border-red-500 rounded-lg p-4 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)] backdrop-blur-md relative shrink-0">
+        <span class="text-red-100 font-mono text-sm font-bold flex items-center gap-2">
+          <span class="text-red-500">[ERROR]</span> {{ vfsStore.error }}
+        </span>
+        <button @click="vfsStore.error = null" class="absolute right-4 p-1.5 hover:bg-red-900 rounded-md transition-colors cursor-pointer text-red-300 hover:text-white">
+          <X class="w-4 h-4" />
+        </button>
       </div>
 
-      <!-- 主要分欄瀏覽區域 (基於 Figma Node 30:174) -->
-      <div class="mt-8 flex flex-col md:flex-row gap-6 w-full h-[698px]">
+      <!-- 主要分欄瀏覽區域 -->
+      <div class="flex flex-col md:flex-row gap-8 w-full h-[70vh]">
         
-        <!-- 左欄：樹狀目錄導航 (基於 Figma Node 29:122) -->
-        <div class="bg-transparent md:w-[320px] shrink-0 flex flex-col overflow-y-auto pr-4 border-r border-mono-800/20">
-          <div class="flex flex-col gap-2">
+        <!-- 左欄：樹狀目錄導航 -->
+        <div class="bg-mono-950/50 md:w-[320px] shrink-0 flex flex-col overflow-y-auto border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative">
+          <div class="p-4 border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
+            <h2 class="font-mono text-mono-400 text-sm tracking-widest uppercase">Directory Tree</h2>
+          </div>
+          <div class="flex flex-col gap-2 p-4">
             <!-- 載入中狀態 -->
-            <div v-if="vfsStore.isLoading && !rootFolder" class="p-4 text-mono-200 text-xl font-medium animate-pulse">
-              &gt; 目錄樹載入中...
+            <div v-if="vfsStore.isLoading && !rootFolder" class="text-mono-400 text-sm font-mono animate-pulse">
+              &gt; Loading directory structure...
             </div>
             
             <!-- 遞迴目錄樹起點 -->
@@ -331,38 +337,36 @@ const getStatusLabel = (status: string) => {
               :depth="0"
             />
             
-            <div v-else class="p-4 text-mono-300 text-xl italic">
-              無目錄資料
+            <div v-else class="text-mono-500 text-sm italic">
+              No directory data
             </div>
           </div>
         </div>
 
-        <!-- 右欄：詳細列表操作區 (基於 Figma Node 29:31) -->
-        <div class="flex-grow flex flex-col h-full bg-[#686666] relative overflow-hidden rounded-[25px] border-4 border-black">
+        <!-- 右欄：詳細列表操作區 -->
+        <div class="flex-grow flex flex-col h-full bg-mono-950/50 relative overflow-hidden rounded-xl border border-mono-700 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
           
-          <!-- 當前目錄標題與操作欄 (基於 Figma Node 29:30) -->
-          <div class="bg-[#494949] h-[77px] px-6 flex items-center justify-between shrink-0 border-b-4 border-black gap-4">
-            <p class="font-['Inter'] font-medium text-4xl text-white truncate flex-grow">
+          <!-- 當前目錄標題與操作欄 -->
+          <div class="bg-mono-900/80 backdrop-blur-md h-[70px] px-6 flex items-center justify-between shrink-0 border-b border-mono-700 gap-4 sticky top-0 z-10 shadow-sm">
+            <p class="font-mono font-medium text-xl text-mono-50 truncate flex-grow [text-shadow:0_0_8px_rgba(255,255,255,0.2)]">
               {{ pathDisplay }}
             </p>
             
             <!-- 操作按鈕組 -->
             <div class="flex items-center gap-3 shrink-0">
-              <!-- 新增資料夾按鈕 (Brutalist Style) -->
               <button 
                 @click="openMkdirModal"
-                class="bg-white text-black hover:bg-mono-200 border-3 border-black rounded-[12px] px-4 py-1.5 text-xl font-extrabold flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                class="bg-mono-800 text-mono-50 hover:bg-mono-700 hover:text-white border border-mono-600 rounded-md px-4 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-sm active:scale-95"
               >
-                <Plus class="w-5 h-5 stroke-[3]" />
+                <Plus class="w-4 h-4" />
                 新建資料夾
               </button>
 
-              <!-- 上傳檔案按鈕 (Brutalist Style) -->
               <button 
                 @click="triggerFileInput"
-                class="bg-white text-black hover:bg-mono-200 border-3 border-black rounded-[12px] px-4 py-1.5 text-xl font-extrabold flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                class="bg-mono-50 text-mono-900 hover:bg-white border border-transparent rounded-md px-4 py-2 text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-[0_0_10px_rgba(255,255,255,0.2)] active:scale-95"
               >
-                <UploadIcon class="w-5 h-5 stroke-[3]" />
+                <UploadIcon class="w-4 h-4" />
                 上傳檔案
               </button>
               <input 
@@ -381,84 +385,55 @@ const getStatusLabel = (status: string) => {
             </div>
           </div>
 
-          <!-- 主要列表區域 (Frame 53 / 29:34) -->
-          <div class="flex-grow overflow-y-auto relative bg-[#686666]">
+          <!-- 主要列表區域 -->
+          <div class="flex-grow overflow-y-auto relative bg-transparent">
             <!-- 載入狀態遮罩 -->
             <div 
               v-if="vfsStore.isLoading" 
-              class="absolute inset-0 bg-black/10 backdrop-blur-[1px] flex items-center justify-center z-10"
+              class="absolute inset-0 bg-mono-950/40 backdrop-blur-sm flex items-center justify-center z-10"
             >
-              <div class="bg-black text-white px-8 py-4 border-2 border-white rounded-[15px] font-bold text-2xl animate-bounce">
-                &gt; 加載中...
+              <div class="bg-mono-900 text-mono-50 px-6 py-3 border border-mono-700 rounded-lg font-mono text-sm shadow-2xl animate-pulse flex items-center gap-2">
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Loading...
               </div>
             </div>
 
-            <!-- 錯誤提示 -->
-            <div v-if="vfsStore.error" class="relative p-6 m-4 bg-red-500/20 border-2 border-red-500 rounded-[15px] text-red-100 text-center text-xl font-bold flex items-center justify-center">
-              <span>{{ vfsStore.error }}</span>
-              <button @click="vfsStore.error = null" class="absolute right-4 p-2 hover:bg-red-500/40 rounded-lg transition-colors cursor-pointer text-red-200 hover:text-white">
-                <X class="w-6 h-6" />
-              </button>
-            </div>
 
             <!-- 檔案與資料夾列表 -->
-            <div class="flex flex-col w-full">
+            <div class="flex flex-col w-full text-sm">
               <!-- 0. 返回上一層 (..) -->
               <div 
                 v-if="vfsStore.currentFolder && vfsStore.currentFolder.parent_id !== null"
-                class="h-[77px] px-8 flex items-center justify-between border-b-2 border-black hover:bg-black/10 cursor-pointer text-white font-['Inter'] font-medium text-2xl select-none group transition-all"
+                class="h-[60px] px-6 flex items-center justify-between border-b border-mono-800/50 hover:bg-mono-800/50 cursor-pointer text-mono-200 hover:text-white font-medium select-none group transition-all"
                 @click="handleFolderClick(vfsStore.currentFolder.parent_id)"
               >
-                <!-- 名稱 (資料夾前置 "> ") -->
-                <span class="truncate pr-4 flex items-center gap-1">
-                  <span>&gt;</span>
+                <span class="truncate pr-4 flex items-center gap-3 font-mono">
+                  <span class="text-mono-500">&gt;</span>
                   <span>..</span>
                 </span>
-                <!-- 修改時間 (空白) -->
-                <span class="shrink-0 text-mono-200 text-right"></span>
+                <span class="shrink-0 text-mono-500 text-right"></span>
               </div>
 
               <!-- 1. 子資料夾清單 -->
               <div 
                 v-for="folder in vfsStore.subfolders" 
                 :key="folder.id"
-                class="h-[77px] px-8 flex items-center justify-between border-b-2 border-black hover:bg-black/10 cursor-pointer text-white font-['Inter'] font-medium text-2xl select-none group transition-all"
+                class="h-[60px] px-6 flex items-center justify-between border-b border-mono-800/50 hover:bg-mono-800/50 cursor-pointer text-mono-200 hover:text-white font-medium select-none group transition-all"
                 @click="handleFolderClick(folder.id)"
               >
-                <!-- 名稱 (資料夾前置 "> ") -->
-                <span class="truncate pr-4 flex items-center gap-2">
-                  <FolderIcon class="w-6 h-6 text-yellow-400 fill-yellow-400 group-hover:scale-105 transition-transform" />
-                  <span>&gt; {{ folder.name }}</span>
+                <span class="truncate pr-4 flex items-center gap-3">
+                  <FolderIcon class="w-5 h-5 text-mono-400 group-hover:text-mono-50 transition-colors" />
+                  <span>{{ folder.name }}</span>
                 </span>
                 
-                <!-- 時間戳 (Hover 時隱藏，切換為按鈕) -->
-                <span class="shrink-0 text-mono-200 text-right group-hover:hidden block">
+                <span class="shrink-0 text-mono-500 text-xs font-mono group-hover:hidden block">
                   {{ formatDate(folder.updated_at) }}
                 </span>
 
-                <!-- Hover 快捷操作按鈕組 (Hover 時顯示) -->
-                <div class="hidden group-hover:flex items-center gap-3" @click.stop>
-                  <button 
-                    @click="openRenameModal(folder.id, 'folder', folder.name)"
-                    title="重新命名"
-                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
-                  >
-                    <Pencil class="w-5 h-5" />
-                  </button>
-                  <button 
-                    @click="openMoveModal(folder.id, 'folder', folder.name)"
-                    title="移動資料夾"
-                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
-                  >
-                    <FolderInput class="w-5 h-5" />
-                  </button>
-                  <button 
-                    @click="openDeleteModal(folder.id, 'folder', folder.name)"
-                    title="刪除"
-                    class="p-2 hover:bg-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-colors cursor-pointer"
-                  >
-                    <Trash2 class="w-5 h-5" />
-                  </button>
+                <div class="hidden group-hover:flex items-center gap-2" @click.stop>
+                  <button @click="openRenameModal(folder.id, 'folder', folder.name)" class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer"><Pencil class="w-4 h-4" /></button>
+                  <button @click="openMoveModal(folder.id, 'folder', folder.name)" class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer"><FolderInput class="w-4 h-4" /></button>
+                  <button @click="openDeleteModal(folder.id, 'folder', folder.name)" class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer"><Trash2 class="w-4 h-4" /></button>
                 </div>
               </div>
 
@@ -466,60 +441,38 @@ const getStatusLabel = (status: string) => {
               <div 
                 v-for="file in vfsStore.files" 
                 :key="file.id"
-                class="h-[77px] px-8 flex items-center justify-between border-b-2 border-black hover:bg-black/10 text-white font-['Inter'] font-medium text-2xl select-none group transition-all"
+                class="h-[60px] px-6 flex items-center justify-between border-b border-mono-800/50 hover:bg-mono-800/50 text-mono-200 hover:text-white font-medium select-none group transition-all"
               >
-                <!-- 名稱 (檔案不帶 "> ") -->
-                <span class="truncate pr-4 flex items-center gap-2">
-                  <FileIcon class="w-6 h-6 text-blue-400 fill-blue-400 group-hover:scale-105 transition-transform" />
+                <span class="truncate pr-4 flex items-center gap-3">
+                  <FileIcon class="w-5 h-5 text-mono-500 group-hover:text-mono-50 transition-colors" />
                   <span>{{ file.name }}</span>
                 </span>
 
-                <!-- 時間戳 -->
-                <span class="shrink-0 text-mono-200 text-right group-hover:hidden block">
+                <span class="shrink-0 text-mono-500 text-xs font-mono group-hover:hidden block">
                   {{ formatDate(file.updated_at) }}
                 </span>
 
-                <!-- Hover 快捷操作按鈕組 (Hover 時顯示) -->
-                <div class="hidden group-hover:flex items-center gap-3" @click.stop>
+                <div class="hidden group-hover:flex items-center gap-2" @click.stop>
                   <button 
                     @click="handleDownloadFile(file.id, file.name)"
                     :disabled="downloadingFiles[file.id]"
-                    title="下載檔案"
-                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <Loader2 v-if="downloadingFiles[file.id]" class="w-5 h-5 animate-spin" />
-                    <DownloadIcon v-else class="w-5 h-5" />
+                    <Loader2 v-if="downloadingFiles[file.id]" class="w-4 h-4 animate-spin" />
+                    <DownloadIcon v-else class="w-4 h-4" />
                   </button>
-                  <button 
-                    @click="openRenameModal(file.id, 'file', file.name)"
-                    title="重新命名"
-                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
-                  >
-                    <Pencil class="w-5 h-5" />
-                  </button>
-                  <button 
-                    @click="openMoveModal(file.id, 'file', file.name)"
-                    title="移動檔案"
-                    class="p-2 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
-                  >
-                    <FolderInput class="w-5 h-5" />
-                  </button>
-                  <button 
-                    @click="openDeleteModal(file.id, 'file', file.name)"
-                    title="刪除"
-                    class="p-2 hover:bg-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-colors cursor-pointer"
-                  >
-                    <Trash2 class="w-5 h-5" />
-                  </button>
+                  <button @click="openRenameModal(file.id, 'file', file.name)" class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer"><Pencil class="w-4 h-4" /></button>
+                  <button @click="openMoveModal(file.id, 'file', file.name)" class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer"><FolderInput class="w-4 h-4" /></button>
+                  <button @click="openDeleteModal(file.id, 'file', file.name)" class="p-1.5 hover:bg-mono-700 rounded-md text-mono-400 hover:text-white transition-colors cursor-pointer"><Trash2 class="w-4 h-4" /></button>
                 </div>
               </div>
 
               <!-- 3. 空目錄提示 -->
               <div 
                 v-if="!vfsStore.isLoading && vfsStore.subfolders.length === 0 && vfsStore.files.length === 0" 
-                class="p-20 text-center text-mono-300 text-2xl italic"
+                class="py-20 text-center text-mono-500 text-sm font-mono italic"
               >
-                此資料夾為空。
+                // empty directory
               </div>
             </div>
           </div>
@@ -529,134 +482,78 @@ const getStatusLabel = (status: string) => {
     </div>
 
     <!-- ==================== MODALS ==================== -->
-
-    <!-- 1. 新增資料夾彈窗 -->
     <BaseModal v-if="showMkdirModal" title="新建資料夾" @close="showMkdirModal = false">
-      <div class="flex flex-col gap-6 text-black">
-        <!-- 錯誤提示 -->
-        <div v-if="vfsStore.error" class="bg-red-500/20 border border-red-500 text-red-100 p-3 rounded-lg text-sm text-center">
+      <div class="flex flex-col gap-4 text-mono-50">
+        <div v-if="vfsStore.error" class="bg-mono-800 border border-mono-600 text-mono-200 p-3 rounded-md text-sm text-center font-mono">
           {{ vfsStore.error }}
         </div>
-        <BaseInput 
-          v-model="newFolderName" 
-          label="資料夾名稱" 
-          placeholder="請輸入資料夾名稱"
-          @keyup.enter="handleConfirmMkdir"
-        />
-        <div class="flex gap-4 mt-2">
-          <BaseButton variant="ghost" class="flex-1 text-xl py-3 border-2 border-black" @click="showMkdirModal = false">
-            取消
-          </BaseButton>
-          <BaseButton class="flex-1 text-xl py-3" @click="handleConfirmMkdir">
-            建立
-          </BaseButton>
+        <BaseInput v-model="newFolderName" label="資料夾名稱" placeholder="請輸入名稱" @keyup.enter="handleConfirmMkdir" />
+        <div class="flex gap-3 mt-4">
+          <BaseButton variant="ghost" class="flex-1 text-sm py-2 border border-mono-700 hover:bg-mono-800" @click="showMkdirModal = false">取消</BaseButton>
+          <BaseButton class="flex-1 text-sm py-2 bg-mono-50 text-black hover:bg-mono-200" @click="handleConfirmMkdir">建立</BaseButton>
         </div>
       </div>
     </BaseModal>
 
-    <!-- 2. 重新命名彈窗 -->
     <BaseModal v-if="showRenameModal" title="重新命名" @close="showRenameModal = false">
-      <div class="flex flex-col gap-6 text-black">
-        <!-- 錯誤提示 -->
-        <div v-if="vfsStore.error" class="bg-red-500/20 border border-red-500 text-red-100 p-3 rounded-lg text-sm text-center">
+      <div class="flex flex-col gap-4 text-mono-50">
+        <div v-if="vfsStore.error" class="bg-mono-800 border border-mono-600 text-mono-200 p-3 rounded-md text-sm text-center font-mono">
           {{ vfsStore.error }}
         </div>
-        <BaseInput 
-          v-model="renameValue" 
-          label="新名稱" 
-          placeholder="請輸入新名稱"
-          @keyup.enter="handleConfirmRename"
-        />
-        <div class="flex gap-4 mt-2">
-          <BaseButton variant="ghost" class="flex-1 text-xl py-3 border-2 border-black" @click="showRenameModal = false">
-            取消
-          </BaseButton>
-          <BaseButton class="flex-1 text-xl py-3" @click="handleConfirmRename">
-            確認修改
-          </BaseButton>
+        <BaseInput v-model="renameValue" label="新名稱" placeholder="請輸入新名稱" @keyup.enter="handleConfirmRename" />
+        <div class="flex gap-3 mt-4">
+          <BaseButton variant="ghost" class="flex-1 text-sm py-2 border border-mono-700 hover:bg-mono-800" @click="showRenameModal = false">取消</BaseButton>
+          <BaseButton class="flex-1 text-sm py-2 bg-mono-50 text-black hover:bg-mono-200" @click="handleConfirmRename">確認修改</BaseButton>
         </div>
       </div>
     </BaseModal>
 
-    <!-- 3. 刪除確認彈窗 -->
     <BaseModal v-if="showDeleteModal" title="確認刪除" @close="showDeleteModal = false">
-      <div class="flex flex-col gap-6 text-black">
-        <!-- 錯誤提示 -->
-        <div v-if="vfsStore.error" class="bg-red-500/20 border border-red-500 text-red-100 p-3 rounded-lg text-sm text-center">
+      <div class="flex flex-col gap-4 text-mono-50">
+        <div v-if="vfsStore.error" class="bg-mono-800 border border-mono-600 text-mono-200 p-3 rounded-md text-sm text-center font-mono">
           {{ vfsStore.error }}
         </div>
-        <div class="text-center p-4">
-          <p class="text-2xl font-bold text-white mb-2">確定要刪除此項目嗎？</p>
-          <p class="text-mono-200 text-lg">
-            您即將刪除「<span class="font-extrabold text-white underline">{{ selectedNodeName }}</span>」。<br>
-            此操作會將該節點邏輯移入回收站。
+        <div class="text-center py-4">
+          <p class="text-lg font-bold text-white mb-2">確定要刪除此項目嗎？</p>
+          <p class="text-mono-400 text-sm">
+            您即將刪除「<span class="font-mono text-mono-50">{{ selectedNodeName }}</span>」。
           </p>
         </div>
-        <div class="flex gap-4">
-          <BaseButton variant="ghost" class="flex-1 text-xl py-3 border-2 border-black" @click="showDeleteModal = false">
-            取消
-          </BaseButton>
-          <BaseButton variant="primary" class="flex-1 bg-red-600 hover:bg-red-500 text-xl py-3 text-white border-2 border-black" @click="handleConfirmDelete">
-            確定刪除
-          </BaseButton>
+        <div class="flex gap-3">
+          <BaseButton variant="ghost" class="flex-1 text-sm py-2 border border-mono-700 hover:bg-mono-800" @click="showDeleteModal = false">取消</BaseButton>
+          <BaseButton variant="primary" class="flex-1 bg-mono-200 text-black hover:bg-white text-sm py-2" @click="handleConfirmDelete">確定刪除</BaseButton>
         </div>
       </div>
     </BaseModal>
 
-    <!-- 4. 移動檔案/目錄彈窗 (迷你 VFS 瀏覽器) -->
     <BaseModal v-if="showMoveModal" title="移動至指定資料夾" @close="showMoveModal = false">
-      <div class="flex flex-col gap-4 text-black">
-        <!-- 錯誤提示 -->
-        <div v-if="vfsStore.error" class="bg-red-500/20 border border-red-500 text-red-100 p-3 rounded-lg text-sm text-center">
+      <div class="flex flex-col gap-4 text-mono-50">
+        <div v-if="vfsStore.error" class="bg-mono-800 border border-mono-600 text-mono-200 p-3 rounded-md text-sm text-center font-mono">
           {{ vfsStore.error }}
         </div>
-        
-        <!-- 迷你導航路徑 -->
-        <div class="bg-mono-700/50 p-3 rounded-xl border-2 border-black text-white text-lg font-bold truncate">
-          當前目的地：<span class="text-yellow-400">{{ miniPathDisplay }}</span>
+        <div class="bg-mono-900 p-3 rounded-md border border-mono-700 text-mono-300 text-sm font-mono truncate shadow-inner">
+          Destination: <span class="text-mono-50">{{ miniPathDisplay }}</span>
         </div>
-
-        <!-- 迷你 VFS 列表區 -->
-        <div class="bg-[#686666] border-3 border-black rounded-2xl h-[280px] overflow-y-auto relative flex flex-col text-white">
-          <!-- 載入中狀態 -->
-          <div v-if="miniLoading" class="absolute inset-0 bg-black/20 flex items-center justify-center z-10">
-            <span class="bg-black border border-white px-4 py-2 rounded-xl text-lg animate-pulse">加載中...</span>
+        <div class="bg-mono-950 border border-mono-700 rounded-md h-[240px] overflow-y-auto relative flex flex-col shadow-inner">
+          <div v-if="miniLoading" class="absolute inset-0 bg-mono-950/50 flex items-center justify-center z-10 backdrop-blur-sm">
+            <span class="bg-mono-800 border border-mono-600 px-3 py-1.5 rounded-md text-sm font-mono animate-pulse shadow-lg">Loading...</span>
           </div>
-
-          <!-- 上一層按鈕 (當前目的地不是最頂層根目錄時顯示) -->
-          <div 
-            v-if="miniBreadcrumbs.length > 1"
-            class="h-[54px] px-6 flex items-center border-b border-black hover:bg-white/10 cursor-pointer text-lg font-medium gap-1"
-            @click="handleMiniFolderClick(miniBreadcrumbs[miniBreadcrumbs.length - 2].id)"
-          >
+          <div v-if="miniBreadcrumbs.length > 1" class="h-[45px] px-4 flex items-center border-b border-mono-800 hover:bg-mono-800 cursor-pointer text-sm font-mono text-mono-400 hover:text-white transition-colors" @click="handleMiniFolderClick(miniBreadcrumbs[miniBreadcrumbs.length - 2].id)">
             <span>&gt; ..</span>
           </div>
-
-          <!-- 子資料夾列表 (排除檔案，因為只能移到資料夾裡) -->
           <div v-if="miniSubfolders.length > 0" class="flex flex-col">
-            <div 
-              v-for="subf in miniSubfolders"
-              :key="subf.id"
-              class="h-[54px] px-6 flex items-center border-b border-black hover:bg-white/10 cursor-pointer text-lg font-medium gap-2"
-              @click="handleMiniFolderClick(subf.id)"
-            >
-              <FolderIcon class="w-5 h-5 text-yellow-400 fill-yellow-400" />
-              <span>&gt; {{ subf.name }}</span>
+            <div v-for="subf in miniSubfolders" :key="subf.id" class="h-[45px] px-4 flex items-center border-b border-mono-800 hover:bg-mono-800 cursor-pointer text-sm gap-2 text-mono-200 hover:text-white transition-colors" @click="handleMiniFolderClick(subf.id)">
+              <FolderIcon class="w-4 h-4 text-mono-500" />
+              <span>{{ subf.name }}</span>
             </div>
           </div>
-          <div v-else-if="!miniLoading" class="p-10 text-center text-mono-300 italic text-base">
-            此目錄下無其他子資料夾
+          <div v-else-if="!miniLoading" class="p-8 text-center text-mono-600 italic text-xs font-mono">
+            // no subdirectories
           </div>
         </div>
-
-        <!-- 按鈕操作區 -->
-        <div class="flex gap-4 mt-2">
-          <BaseButton variant="ghost" class="flex-1 text-xl py-3 border-2 border-black" @click="showMoveModal = false">
-            取消
-          </BaseButton>
-          <BaseButton class="flex-1 text-xl py-3" @click="handleConfirmMove">
-            移至此處
-          </BaseButton>
+        <div class="flex gap-3 mt-2">
+          <BaseButton variant="ghost" class="flex-1 text-sm py-2 border border-mono-700 hover:bg-mono-800" @click="showMoveModal = false">取消</BaseButton>
+          <BaseButton class="flex-1 text-sm py-2 bg-mono-50 text-black hover:bg-mono-200" @click="handleConfirmMove">移至此處</BaseButton>
         </div>
       </div>
     </BaseModal>
@@ -664,132 +561,91 @@ const getStatusLabel = (status: string) => {
     <!-- 5. 懸浮上傳進度面板 -->
     <div 
       v-if="vfsStore.uploadTasks.length > 0"
-      class="fixed bottom-6 right-6 z-50 w-[380px] bg-[#494949] border-[4px] border-black rounded-[20px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col text-white"
+      class="fixed bottom-6 right-6 z-50 w-[360px] bg-mono-950 border border-mono-700 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col text-mono-50 backdrop-blur-xl"
     >
-      <!-- 面板標頭列 -->
-      <div class="bg-black text-white px-5 py-3 flex items-center justify-between border-b-3 border-black">
+      <div class="bg-mono-900/80 text-mono-50 px-4 py-3 flex items-center justify-between border-b border-mono-700">
         <div class="flex items-center gap-2">
-          <span class="text-lg font-extrabold font-['Inter']">上傳傳輸管理</span>
-          <span class="text-xs bg-[#707070] border border-white px-2 py-0.5 rounded-full">
+          <span class="text-sm font-bold font-sans">傳輸管理</span>
+          <span class="text-[10px] font-mono bg-mono-800 border border-mono-600 px-1.5 py-0.5 rounded text-mono-300">
             {{ activeUploadCount }} / {{ vfsStore.uploadTasks.length }}
           </span>
         </div>
         <button 
           @click="vfsStore.clearFinishedTasksAction()"
-          class="text-xs font-bold bg-white text-black hover:bg-mono-200 px-2 py-1 rounded shadow-[2px_2px_0px_0px_rgba(255,255,255,0.3)] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer border border-transparent"
+          class="text-[10px] font-mono bg-mono-800 text-mono-200 hover:bg-mono-700 hover:text-white px-2 py-1 rounded transition-colors cursor-pointer border border-mono-600"
         >
-          清除已結束
+          CLEAR
         </button>
       </div>
 
-      <!-- 任務列表 -->
-      <div class="max-h-[280px] overflow-y-auto p-4 flex flex-col gap-3 bg-[#686666]">
+      <div class="max-h-[300px] overflow-y-auto p-3 flex flex-col gap-2 bg-mono-950/50">
         <div 
           v-for="task in vfsStore.uploadTasks" 
           :key="task.id"
-          class="bg-[#494949] border-2 border-black rounded-xl p-3 flex flex-col gap-2 relative"
+          class="bg-mono-900 border border-mono-700 rounded-lg p-3 flex flex-col gap-2 relative shadow-sm"
         >
           <div class="flex items-center justify-between">
-            <span class="text-sm font-bold truncate max-w-[220px]" :title="task.filename">
+            <span class="text-xs font-medium truncate max-w-[180px]" :title="task.filename">
               {{ task.filename }}
             </span>
-            <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded border border-black bg-white text-black">
+            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-mono-800 text-mono-300 border border-mono-700">
               {{ getStatusLabel(task.status) }}
             </span>
           </div>
 
-          <!-- 進度條 -->
-          <div class="w-full bg-black border-2 border-black rounded-full h-4 overflow-hidden relative">
+          <!-- 進度條 (白/灰科技感) -->
+          <div class="w-full bg-mono-950 border border-mono-700 rounded-full h-3 overflow-hidden relative">
             <div 
-              class="bg-green-400 h-full transition-all duration-300"
+              class="bg-mono-50 h-full transition-all duration-300"
               :style="{ width: `${task.progress}%` }"
             ></div>
-            <span class="absolute inset-0 flex items-center justify-center text-[10px] font-extrabold text-white mix-blend-difference">
+            <span class="absolute inset-0 flex items-center justify-center text-[8px] font-mono font-bold mix-blend-difference text-white">
               {{ task.progress }}%
             </span>
           </div>
 
-          <!-- 操作：取消與狀態 -->
-          <div class="flex items-center justify-between text-xs mt-1">
-            <span class="text-mono-200">
+          <div class="flex items-center justify-between text-[10px] mt-1 font-mono">
+            <span class="text-mono-500">
               {{ formatBytes(task.totalSize) }}
             </span>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5">
               <template v-if="task.status === 'uploading' || task.status === 'checking'">
-                <button 
-                  @click="pauseUpload(task.id)"
-                  class="text-yellow-400 hover:text-yellow-300 font-extrabold cursor-pointer border border-transparent hover:border-yellow-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  暫停
-                </button>
+                <button @click="pauseUpload(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">PAUSE</button>
               </template>
               <template v-else-if="task.status === 'paused'">
-                <button 
-                  @click="resumeUpload(task.id)"
-                  class="text-green-400 hover:text-green-300 font-extrabold cursor-pointer border border-transparent hover:border-green-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  繼續
-                </button>
-                <button 
-                  @click="cancelUpload(task.id)"
-                  class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  刪除
-                </button>
+                <button @click="resumeUpload(task.id)" class="text-mono-50 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RESUME</button>
+                <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
               </template>
               <template v-else-if="task.status === 'waiting_for_file'">
-                <button 
-                  @click="triggerResumeFileInput(task.id)"
-                  class="text-yellow-400 hover:text-yellow-300 font-extrabold cursor-pointer border border-transparent hover:border-yellow-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  繼續上傳 (補檔)
-                </button>
-                <button 
-                  @click="cancelUpload(task.id)"
-                  class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  刪除
-                </button>
+                <button @click="triggerResumeFileInput(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RETRY</button>
+                <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
               </template>
               <template v-else-if="task.status === 'failed'">
-                <button 
-                  @click="resumeUpload(task.id)"
-                  class="text-blue-400 hover:text-blue-300 font-extrabold cursor-pointer border border-transparent hover:border-blue-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  重試
-                </button>
-                <button 
-                  @click="cancelUpload(task.id)"
-                  class="text-red-400 hover:text-red-300 font-extrabold cursor-pointer border border-transparent hover:border-red-400 px-1.5 py-0.5 rounded transition-all"
-                >
-                  刪除
-                </button>
+                <button @click="resumeUpload(task.id)" class="text-mono-400 hover:text-white cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">RETRY</button>
+                <button @click="cancelUpload(task.id)" class="text-mono-500 hover:text-mono-300 cursor-pointer px-1 py-0.5 rounded hover:bg-mono-800 transition-colors">CANCEL</button>
               </template>
-              <span v-else-if="task.status === 'finalizing'" class="text-yellow-400 font-extrabold animate-pulse">合併中...</span>
-              <span v-else-if="task.status === 'success'" class="text-green-400 font-extrabold">✓ 已完成</span>
+              <span v-else-if="task.status === 'finalizing'" class="text-mono-300 animate-pulse">MERGING...</span>
+              <span v-else-if="task.status === 'success'" class="text-mono-50">DONE</span>
             </div>
           </div>
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
 <style scoped>
-/* 滾動條樣式，使其符合粗獷黑白灰色調 */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #686666;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #494949;
-  border: 2px solid black;
+  background: var(--color-mono-700);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #121212;
+  background: var(--color-mono-500);
 }
 </style>

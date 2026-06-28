@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useVfsStore } from '@/stores/vfs';
 import type { Folder } from '@/types/vfs';
+import { File as FileIcon } from 'lucide-vue-next';
 
 interface Props {
   folder: Folder;
@@ -38,28 +39,28 @@ const handleToggleExpand = (e: Event) => {
   <div class="flex flex-col select-none">
     <!-- 資料夾節點列 -->
     <div 
-      class="flex items-center py-1 hover:bg-mono-400/20 cursor-pointer text-2xl font-medium text-black group transition-colors"
-      :style="{ paddingLeft: `${depth * 24}px` }"
+      class="flex items-center py-2 px-2 hover:bg-mono-800/50 cursor-pointer text-sm font-mono text-mono-300 hover:text-mono-50 group transition-all rounded-md"
+      :style="{ paddingLeft: `${depth * 20 + 8}px` }"
       @click="handleFolderClick"
     >
       <!-- 展開/折疊按鈕 -->
       <span 
-        class="w-6 h-6 flex items-center justify-center mr-1 text-black font-bold transition-transform duration-150 active:scale-95"
+        class="w-5 h-5 flex items-center justify-center mr-2 text-mono-500 group-hover:text-mono-300 transition-transform duration-150 active:scale-95 shrink-0"
         @click.stop="handleToggleExpand"
       >
-        <span :class="['transform transition-transform inline-block', isExpanded ? 'rotate-90' : '']">
+        <span :class="['transform transition-transform inline-block font-bold', isExpanded ? 'rotate-90 text-mono-200' : '']">
           &gt;
         </span>
       </span>
 
       <!-- 資料夾名稱 -->
-      <span :class="['truncate', isCurrent ? 'font-bold underline' : '']">
+      <span :class="['truncate flex-grow', isCurrent ? 'text-mono-50 font-bold [text-shadow:0_0_8px_rgba(255,255,255,0.4)]' : '']">
         {{ folder.name }}
       </span>
     </div>
 
     <!-- 子目錄與子檔案遞迴展示 -->
-    <div v-if="isExpanded && cachedContent" class="flex flex-col">
+    <div v-if="isExpanded && cachedContent" class="flex flex-col relative before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[1px] before:bg-mono-800 before:ml-[18px]">
       <!-- 渲染子資料夾 -->
       <VfsTreeItem 
         v-for="subf in cachedContent.folders" 
@@ -72,9 +73,12 @@ const handleToggleExpand = (e: Event) => {
       <div 
         v-for="file in cachedContent.files" 
         :key="file.id"
-        class="flex items-center py-1 text-2xl font-medium text-black/80 select-none"
-        :style="{ paddingLeft: `${(depth + 1) * 24 + 24}px` }"
+        class="flex items-center py-2 px-2 text-sm font-mono text-mono-500 select-none group transition-all rounded-md"
+        :style="{ paddingLeft: `${(depth + 1) * 20 + 8}px` }"
       >
+        <span class="w-5 h-5 flex items-center justify-center mr-2 text-mono-600 shrink-0">
+          <FileIcon class="w-3.5 h-3.5" />
+        </span>
         <span class="truncate">{{ file.name }}</span>
       </div>
     </div>
