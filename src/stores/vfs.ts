@@ -243,16 +243,20 @@ export const useVfsStore = defineStore('vfs', () => {
   }
 
   /**
-   * 更新單個上傳任務的進度百分比
+   * 更新單個上傳任務的進度百分比 (支援多個活躍分塊)
    */
-  function updateTaskProgress(task: UploadTask, totalChunks: number, currentChunkIndex?: number, currentChunkProgress: number = 0) {
+  function updateTaskProgress(task: UploadTask, totalChunks: number, activeProgressMap: Record<number, number> = {}) {
     const uploadedCount = task.uploadedChunks.length;
     let totalProgress = (uploadedCount / totalChunks);
 
-    // 如果傳入當前正在上傳的分塊進度，加權進去
-    if (currentChunkIndex !== undefined && !task.uploadedChunks.includes(currentChunkIndex)) {
-      totalProgress += (currentChunkProgress / totalChunks);
+    // 加上活躍中的分塊進度
+    let activeProgressSum = 0;
+    for (const chunkIndex in activeProgressMap) {
+      if (!task.uploadedChunks.includes(Number(chunkIndex))) {
+        activeProgressSum += activeProgressMap[chunkIndex];
+      }
     }
+    totalProgress += (activeProgressSum / totalChunks);
 
     task.progress = Math.min(Math.round(totalProgress * 100), 99); // 結算前最多到 99%
   }
@@ -270,7 +274,13 @@ export const useVfsStore = defineStore('vfs', () => {
       return;
     }
 
-    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+    let CHUNK_SIZE = Number(import.meta.env.VITE_CHUNK_SIZE_SMALL) || 2 * 1024 * 1024; // 預設 2MB
+    if (task.totalSize >= 1024 * 1024 * 1024) {
+      CHUNK_SIZE = Number(import.meta.env.VITE_CHUNK_SIZE_LARGE) || 10 * 1024 * 1024;
+    } else if (task.totalSize >= 100 * 1024 * 1024) {
+      CHUNK_SIZE = Number(import.meta.env.VITE_CHUNK_SIZE_MEDIUM) || 5 * 1024 * 1024;
+    }
+
     const totalChunks = Math.ceil(task.totalSize / CHUNK_SIZE) || 1;
     task.totalChunks = totalChunks;
     let uploadId = '';
@@ -285,6 +295,12 @@ export const useVfsStore = defineStore('vfs', () => {
         try {
           const folderId = currentFolder.value?.id || task.targetFolderId || null;
           const statusRes = await vfsApi.resumeUpload(cachedUploadId, task.lastModified, folderId);
+          
+          // 【防呆機制】：若環境變數的 Chunk Size 變更，導致前端算出的 totalChunks 與後端舊會話不符，直接捨棄舊會話重新上傳
+          if (statusRes.data.total_chunks !== totalChunks) {
+            throw new Error('分塊設定已變更，放棄舊會話');
+          }
+
           uploadId = statusRes.data.upload_id;
           task.uploadedChunks = statusRes.data.uploaded_chunks || [];
           task.uploadId = uploadId;
@@ -312,62 +328,74 @@ export const useVfsStore = defineStore('vfs', () => {
       const source = axios.CancelToken.source();
       task.cancelSource = source;
 
-      // 4. 開始上傳分塊
+      // 4. 開始上傳分塊 (併發 Promise Pool)
+      const CONCURRENCY = Number(import.meta.env.VITE_UPLOAD_CONCURRENCY) || 3;
+      const pendingChunks: number[] = [];
       for (let i = 0; i < totalChunks; i++) {
-        // 檢查是否已被暫停或取消
-        if ((task.status as string) === 'paused' || (task.status as string) === 'canceled') return;
-
-        // 若該分塊已上傳，更新進度後跳過
-        if (task.uploadedChunks.includes(i)) {
-          updateTaskProgress(task, totalChunks);
-          continue;
+        if (!task.uploadedChunks.includes(i)) {
+          pendingChunks.push(i);
+        } else {
+          // 初始化時也順便更新一下進度
+          updateTaskProgress(task, totalChunks, {});
         }
+      }
 
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, task.totalSize);
-        const chunkBlob = task.file.slice(start, end);
+      const activeProgressMap: Record<number, number> = {};
+      let hasError = false; // 發生錯誤時標記，以中斷其他 Worker
 
-        // 每塊上傳
-        let chunkProgress = 0;
-        let retries = 3;
-        let success = false;
-        
-        while (retries > 0 && !success) {
-          try {
-            await vfsApi.uploadChunk(
-              uploadId,
-              i,
-              task.uploadToken!,
-              chunkBlob,
-              (progressEvent) => {
-                if (progressEvent.total) {
-                  chunkProgress = progressEvent.loaded / progressEvent.total;
-                  updateTaskProgress(task, totalChunks, i, chunkProgress);
-                }
-              },
-              source.token
-            );
-            success = true;
-          } catch (err: any) {
-            if (axios.isCancel(err)) {
-              throw err; // 若為使用者主動取消/暫停，直接拋出不重試
+      const worker = async () => {
+        while (pendingChunks.length > 0 && !hasError) {
+          if ((task.status as string) === 'paused' || (task.status as string) === 'canceled') return;
+
+          const i = pendingChunks.shift()!;
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, task.totalSize);
+          const chunkBlob = task.file!.slice(start, end);
+
+          let retries = 3;
+          let success = false;
+          
+          while (retries > 0 && !success && !hasError) {
+            if ((task.status as string) === 'paused' || (task.status as string) === 'canceled') return;
+            try {
+              await vfsApi.uploadChunk(
+                uploadId,
+                i,
+                task.uploadToken!,
+                chunkBlob,
+                (progressEvent) => {
+                  if (progressEvent.total) {
+                    activeProgressMap[i] = progressEvent.loaded / progressEvent.total;
+                    updateTaskProgress(task, totalChunks, activeProgressMap);
+                  }
+                },
+                source.token
+              );
+              success = true;
+              delete activeProgressMap[i]; // 完成後移除活躍進度
+              task.uploadedChunks.push(i);
+              updateTaskProgress(task, totalChunks, activeProgressMap);
+            } catch (err: any) {
+              if (axios.isCancel(err) || err.response?.status === 401) {
+                hasError = true;
+                throw err; // 取消或被劫持，不重試直接終止所有 Worker
+              }
+              retries--;
+              if (retries === 0) {
+                hasError = true;
+                throw err;
+              }
+              await new Promise(r => setTimeout(r, 1000));
             }
-            if (err.response?.status === 401) {
-              throw err; // 401 錯誤代表會話被劫持，不重試直接終止
-            }
-            retries--;
-            if (retries === 0) {
-              throw err; // 重試用盡，宣告失敗
-            }
-            // 稍等 1 秒後重試
-            await new Promise(r => setTimeout(r, 1000));
           }
         }
+      };
 
-        // 上傳成功後加入已上傳列表
-        task.uploadedChunks.push(i);
-        updateTaskProgress(task, totalChunks);
+      const workers = [];
+      for (let w = 0; w < CONCURRENCY; w++) {
+        workers.push(worker());
       }
+      await Promise.all(workers);
 
       // 5. 結算合併
       if (task.status === 'uploading') {
@@ -376,7 +404,7 @@ export const useVfsStore = defineStore('vfs', () => {
         task.status = 'success';
         task.progress = 100;
         localStorage.removeItem(cacheKey);
-        
+
         // 重新載入當前目錄
         await fetchDirectory(currentFolder.value?.id);
 
@@ -443,7 +471,7 @@ export const useVfsStore = defineStore('vfs', () => {
    */
   function addUploadTaskAction(file: File) {
     const taskId = `${file.name}-${file.size}-${file.lastModified}`;
-    
+
     // 避免重複加入相同的進行中任務
     const existing = uploadTasks.value.find(t => t.id === taskId);
     if (existing && (existing.status === 'uploading' || existing.status === 'checking' || existing.status === 'finalizing')) {
