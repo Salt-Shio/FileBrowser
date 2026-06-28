@@ -4,9 +4,7 @@
 
 ## 前端展示
 
-<video width="100%" controls>
-  <source src="./docs/salty-file-explore-demo.mp4" type="video/mp4">
-</video>
+https://github.com/Salt-Shio/FileBrowser/raw/main/docs/salty-file-explore-demo.mp4
 
 ## 使用到的技術
 
