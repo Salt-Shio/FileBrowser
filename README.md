@@ -4,7 +4,7 @@
 
 ## 前端展示
 
-https://github.com/Salt-Shio/FileBrowser/raw/main/docs/salty-file-explore-demo.mp4
+https://github.com/user-attachments/assets/7d208ce5-a021-4409-9626-f64c8d5a54c4
 
 ## 使用到的技術
 
