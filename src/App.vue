@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import LightningCursor from '@/components/ui/LightningCursor.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -31,6 +32,7 @@ const currentRouteName = computed(() => {
 
 <template>
   <div class="min-h-screen flex flex-col bg-mono-900 text-mono-50 font-sans selection:bg-mono-500 selection:text-white">
+    <LightningCursor />
     <!-- Navbar (科技終端機風格) -->
     <nav class="bg-black flex items-center justify-between px-8 py-5 border-b border-mono-700 relative z-20">
       <div class="flex items-center">
