@@ -321,7 +321,7 @@ const getStatusLabel = (status: string) => {
         
         <!-- 左欄：樹狀目錄導航 -->
         <div class="bg-mono-950/50 md:w-[380px] shrink-0 flex flex-col overflow-y-auto border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative">
-          <div class="p-4 border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
+          <div class="h-[70px] px-6 flex items-center border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
             <h2 class="font-mono text-mono-400 text-sm tracking-widest uppercase">Directory Tree</h2>
           </div>
           <div class="flex flex-col gap-2 p-4">
@@ -480,7 +480,7 @@ const getStatusLabel = (status: string) => {
 
         <!-- 第三欄：傳輸管理 -->
         <div class="bg-mono-950/50 md:w-[380px] shrink-0 flex flex-col border border-mono-700 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
-          <div class="p-4 border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm flex items-center justify-between">
+          <div class="h-[70px] px-6 flex items-center justify-between border-b border-mono-800 bg-mono-900/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
             <h2 class="font-mono text-mono-400 text-sm tracking-widest uppercase">Transfers</h2>
             <button 
               @click="vfsStore.clearFinishedTasksAction()"
